@@ -78,9 +78,9 @@ export default function ToastItem({ toast, onClose }: ToastProps) {
   const config = getToastConfig();
 
   return (
-    <div className="flex items-center max-w-sm w-full p-4 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl shadow-sm gap-x-3 transition-all duration-300 ease-out">
+    <div className="flex items-center max-w-sm w-full p-4 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl shadow-lg gap-x-3 transition-all duration-200 hover:shadow-xl">
       {/* Icon */}
-      <div className={`flex items-center justify-center w-8 h-8 rounded-md ${config.bgColor} border ${config.borderColor} shrink-0`}>
+      <div className={`flex items-center justify-center w-8 h-8 rounded-md ${config.bgColor} border ${config.borderColor} shrink-0 transition-transform duration-200`}>
         {config.iconSrc && (
           <Icon src={config.iconSrc} className={`w-4 h-4 ${config.iconColor}`} size={16} />
         )}
@@ -92,10 +92,10 @@ export default function ToastItem({ toast, onClose }: ToastProps) {
       {/* Close button */}
       <button
         onClick={() => onClose(id)}
-        className="text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+        className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 p-1 rounded hover:bg-gray-100"
         aria-label="Close notification"
       >
-        <Icon src="close.svg" className="w-5 h-5" size={20} />
+        <Icon src="x.svg" className="w-4 h-4" size={16} />
       </button>
     </div>
   );

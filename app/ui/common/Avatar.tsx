@@ -1,20 +1,24 @@
 /**
- * Component Avatar - Hiển thị avatar với gradient background
+ * Component Avatar - Hiển thị avatar user
  * 
  * Component này:
- * - Hiển thị avatar với gradient background (mặc định từ #5865F2 đến #4752C4)
- * - Hiển thị chữ cái đầu của username
+ * - Hiển thị ảnh avatar nếu có avatarUrl
+ * - Fallback: hiển thị chữ cái đầu với gradient background (mặc định từ #5865F2 đến #4752C4)
  * - Hỗ trợ custom size và className
  * - Component dùng chung cho toàn bộ ứng dụng
+ * - Đảm bảo đồng bộ hiển thị avatar ở tất cả các nơi
  */
 
 "use client";
 
 import { memo } from "react";
+import Image from "next/image";
 
 interface AvatarProps {
-  /** Chữ cái đầu hoặc ký tự hiển thị trong avatar */
+  /** Chữ cái đầu hoặc ký tự hiển thị trong avatar (fallback nếu không có avatarUrl) */
   initial: string;
+  /** URL của ảnh avatar (nếu có sẽ hiển thị ảnh, không có sẽ hiển thị initial) */
+  avatarUrl?: string;
   /** Kích thước avatar (mặc định: "md") */
   size?: "sm" | "md" | "lg" | "xl";
   /** Custom className cho container */
@@ -41,6 +45,7 @@ const sizeMap = {
 // Component Avatar - Memoized để tối ưu performance
 const Avatar = memo(function Avatar({
   initial,
+  avatarUrl,
   size = "md",
   className = "",
   gradient = { from: "#5865F2", to: "#4752C4" },
@@ -51,6 +56,26 @@ const Avatar = memo(function Avatar({
   const shadowClass = shadow ? "shadow-md" : "";
   const hoverClass = hoverScale ? "group-hover:scale-110 transition-transform" : "";
 
+  // Nếu có avatarUrl, hiển thị ảnh
+  if (avatarUrl) {
+    const imageSize = size === "sm" ? 24 : size === "md" ? 32 : size === "lg" ? 40 : 48;
+    return (
+      <div
+        className={`${sizeClasses} rounded-full flex items-center justify-center shrink-0 overflow-hidden ${shadowClass} ${hoverClass} ${className}`}
+      >
+        <Image
+          src={avatarUrl}
+          alt={initial}
+          width={imageSize}
+          height={imageSize}
+          className="w-full h-full object-cover"
+          unoptimized
+        />
+      </div>
+    );
+  }
+
+  // Fallback: hiển thị chữ cái đầu với gradient background
   return (
     <div
       className={`${sizeClasses} rounded-full flex items-center justify-center shrink-0 ${shadowClass} ${hoverClass} ${className}`}

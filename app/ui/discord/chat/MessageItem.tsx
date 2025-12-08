@@ -72,8 +72,6 @@ const MessageItem = memo(function MessageItem({
   return (
     <div 
       className="flex gap-3 my-2 group hover:bg-[#F7F8F9]/50 rounded px-2 py-1 -mx-2 relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <Avatar initial={avatar} size="lg" />
       <div className="flex-1 min-w-0">

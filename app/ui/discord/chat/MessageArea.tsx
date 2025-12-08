@@ -586,6 +586,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
                   userName={user.name}
                   userEmail={user.email}
                   userTag={user.tag}
+                  userAvatar={user.avatar && user.avatar.startsWith('http') ? user.avatar : undefined}
                   friendId={user.id}
                   onUnfriend={() => {
                     // Quay về Friends view sau khi xóa bạn

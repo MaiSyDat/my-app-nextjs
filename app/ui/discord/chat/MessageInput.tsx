@@ -23,7 +23,7 @@ interface MessageInputProps {
 // Component input để gửi tin nhắn - Memoized
 const MessageInput = memo(function MessageInput({ userName, value, onChange, onKeyPress }: MessageInputProps) {
   return (
-    <div className="w-full bg-[#FFFFFF] border-t border-[#E3E5E8] px-4 py-3">
+    <div className="h-14 bg-linear-to-t from-[#F7F8F9] to-[#FFFFFF] flex items-center px-2 m-2 shrink-0 border border-[#DCDDDE] rounded-lg shadow-lg overflow-hidden">
       <div className="flex items-center gap-2 w-full">
         {/* Input field với plus icon bên trong */}
         <div className="flex-1 relative">
@@ -42,16 +42,16 @@ const MessageInput = memo(function MessageInput({ userName, value, onChange, onK
 
         {/* Icons bên phải */}
         <div className="flex items-center gap-1 shrink-0">
-          <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]">
+          <button className="w-8 h-8 rounded-lg hover:bg-[#E3E5E8] flex items-center justify-center text-[#747F8D] hover:text-[#060607] transition-all duration-200 hover:scale-110 hover:shadow-md group">
             <Icon src="gift.svg" className="w-5 h-5" size={20} />
           </button>
-          <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]">
+          <button className="w-8 h-8 rounded-lg hover:bg-[#E3E5E8] flex items-center justify-center text-[#747F8D] hover:text-[#060607] transition-all duration-200 hover:scale-110 hover:shadow-md group">
             <Icon src="gif.svg" className="w-5 h-5" size={20} />
           </button>
-          <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]">
+          <button className="w-8 h-8 rounded-lg hover:bg-[#E3E5E8] flex items-center justify-center text-[#747F8D] hover:text-[#060607] transition-all duration-200 hover:scale-110 hover:shadow-md group">
             <Icon src="sticker.svg" className="w-5 h-5" size={20} />
           </button>
-          <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]">
+          <button className="w-8 h-8 rounded-lg hover:bg-[#E3E5E8] flex items-center justify-center text-[#747F8D] hover:text-[#060607] transition-all duration-200 hover:scale-110 hover:shadow-md group">
             <Icon src="emoji.svg" className="w-5 h-5" size={20} />
           </button>
         </div>

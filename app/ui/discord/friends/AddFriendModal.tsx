@@ -34,6 +34,8 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
     id: string;
     username: string;
     email: string;
+    friendshipStatus?: string | null;
+    requestedBy?: string | null;
   }>>([]);
   // State loading
   const [isSearching, setIsSearching] = useState(false);
@@ -108,9 +110,15 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
       const success = await sendFriendRequest(friendId);
       
       if (success) {
-        // Thành công - xóa user khỏi kết quả tìm kiếm ngay lập tức
+        // Thành công - cập nhật trạng thái thành "pending"
         showSuccess("Đã gửi lời mời kết bạn!");
-        setSearchResults((prev) => prev.filter((user) => user.id !== friendId));
+        setSearchResults((prev) =>
+          prev.map((user) =>
+            user.id === friendId
+              ? { ...user, friendshipStatus: "pending", requestedBy: currentUserId }
+              : user
+          )
+        );
         onSuccess?.();
       } else {
         // Lỗi đã được xử lý trong context, chỉ cần hiển thị thông báo chung
@@ -142,9 +150,9 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
           </p>
         </div>
 
-        {/* Search Input */}
-        <div className="p-6">
-          <div className="relative">
+        {/* Search Input và Results - Chiều cao cố định */}
+        <div className="p-6 flex flex-col h-[400px]">
+          <div className="relative shrink-0">
             <div className="absolute left-3 top-1/2 -translate-y-1/2">
               <Icon src="search.svg" className="w-5 h-5 text-[#747F8D]" size={20} />
             </div>
@@ -158,71 +166,88 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
             />
           </div>
 
-          {/* Search Results */}
-          {searchQuery.trim() && (
-            <div className="mt-4 max-h-[400px] overflow-y-auto custom-scrollbar">
-              {isSearching ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-[#5865F2] border-t-transparent rounded-full animate-spin"></div>
-                  <span className="ml-3 text-sm text-[#747F8D]">Đang tìm kiếm...</span>
-                </div>
-              ) : searchResults.length > 0 ? (
-                <div className="space-y-2">
-                  {searchResults.map((user) => (
-                    <div
-                      key={user.id}
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-[#F7F8F9] transition-colors"
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {/* Avatar */}
-                        <Avatar
-                          initial={user.username.charAt(0)}
-                          size="lg"
-                        />
-                        {/* Thông tin user */}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[#060607] text-sm truncate">
-                            {user.username}
+          {/* Search Results - Chiều cao cố định với scroll */}
+          <div className="mt-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+            {searchQuery.trim() ? (
+              <>
+                {isSearching ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-[#5865F2] border-t-transparent rounded-full animate-spin"></div>
+                    <span className="ml-3 text-sm text-[#747F8D]">Đang tìm kiếm...</span>
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  <div className="space-y-2">
+                    {searchResults.map((user) => {
+                      // Kiểm tra trạng thái friendship
+                      const isFriend = user.friendshipStatus === "accepted";
+                      const isPending = user.friendshipStatus === "pending";
+                      const isRequestedByMe = isPending && user.requestedBy === currentUserId;
+                      const isRequestedByThem = isPending && user.requestedBy !== currentUserId;
+                      
+                      return (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between p-3 rounded-lg hover:bg-[#F7F8F9] transition-colors"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            {/* Avatar */}
+                            <Avatar
+                              initial={user.username.charAt(0)}
+                              size="lg"
+                            />
+                            {/* Thông tin user */}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-[#060607] text-sm truncate">
+                                {user.username}
+                              </div>
+                              <div className="text-xs text-[#747F8D] truncate">
+                                {user.email}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-xs text-[#747F8D] truncate">
-                            {user.email}
-                          </div>
+                          {/* Hiển thị trạng thái hoặc nút gửi lời mời */}
+                          {isFriend ? (
+                            <span className="px-4 py-1.5 text-sm font-medium text-[#747F8D] bg-[#F7F8F9] rounded-lg shrink-0">
+                              Bạn bè
+                            </span>
+                          ) : isRequestedByMe ? (
+                            <span className="px-4 py-1.5 text-sm font-medium text-[#747F8D] bg-[#F7F8F9] rounded-lg shrink-0">
+                              Đã gửi lời mời
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleSendFriendRequest(user.id)}
+                              disabled={sendingRequest === user.id || isRequestedByThem}
+                              className="px-4 py-1.5 text-sm font-semibold text-white bg-linear-to-r from-[#5865F2] to-[#4752C4] hover:from-[#4752C4] hover:to-[#3C45A5] rounded-lg transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                            >
+                              {sendingRequest === user.id ? "Đang gửi..." : "Gửi lời mời"}
+                            </button>
+                          )}
                         </div>
-                      </div>
-                      {/* Nút gửi lời mời */}
-                      <button
-                        onClick={() => handleSendFriendRequest(user.id)}
-                        disabled={sendingRequest === user.id}
-                        className="px-4 py-1.5 text-sm font-semibold text-white bg-linear-to-r from-[#5865F2] to-[#4752C4] hover:from-[#4752C4] hover:to-[#3C45A5] rounded-lg transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                      >
-                        {sendingRequest === user.id ? "Đang gửi..." : "Gửi lời mời"}
-                      </button>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-[#747F8D]">Không tìm thấy người dùng nào.</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8 h-full flex flex-col items-center justify-center">
+                <div className="mb-4">
+                  <Icon
+                    src="search.svg"
+                    className="w-12 h-12 mx-auto text-[#747F8D] opacity-50"
+                    size={48}
+                  />
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-sm text-[#747F8D]">Không tìm thấy người dùng nào.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Empty state khi chưa search */}
-          {!searchQuery.trim() && (
-            <div className="mt-4 text-center py-8">
-              <div className="mb-4">
-                <Icon
-                  src="search.svg"
-                  className="w-12 h-12 mx-auto text-[#747F8D] opacity-50"
-                  size={48}
-                />
+                <p className="text-sm text-[#747F8D]">
+                  Nhập username hoặc email để tìm kiếm bạn bè
+                </p>
               </div>
-              <p className="text-sm text-[#747F8D]">
-                Nhập username hoặc email để tìm kiếm bạn bè
-              </p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Footer */}

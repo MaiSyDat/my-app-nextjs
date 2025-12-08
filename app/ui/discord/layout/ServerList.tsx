@@ -11,6 +11,7 @@
 "use client";
 
 import { useState, memo, useMemo, useCallback } from "react";
+import Image from "next/image";
 import Icon from "../../common/Icon";
 
 // Left sidebar showing Discord-style server icons - Memoized
@@ -44,20 +45,9 @@ const ServerList = memo(function ServerList() {
       {/* Discord home button */}
       <button
         onClick={() => handleServerClick("home")}
-        onMouseEnter={() => handleMouseEnter("home")}
-        onMouseLeave={handleMouseLeave}
-        className={`w-12 h-12 rounded-full transition-all duration-200 flex items-center justify-center mb-2 group relative
-          ${
-            selectedServer === "home"
-              ? "bg-[#5865F2] rounded-2xl"
-              : "bg-[#5865F2] hover:bg-[#4752C4] hover:rounded-2xl"
-          }`}
+        className="w-12 h-12 flex items-center justify-center mb-2"
       >
-        <Icon src="discord.svg" className="w-6 h-6 transition-transform group-hover:scale-110 text-white" size={24} />
-        {/* Active indicator */}
-        {selectedServer === "home" && (
-          <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-full"></div>
-        )}
+        <Image src="/logo/logo.png" alt="Logo" width={24} height={24} className="w-6 h-6" />
       </button>
 
       {/* Divider */}

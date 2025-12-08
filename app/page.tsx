@@ -11,6 +11,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Icon from "@/app/ui/common/Icon";
 
 // Landing page với hero section và các tính năng
@@ -35,7 +36,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center space-x-2">
-            <Icon src="discord.svg" className="w-8 h-8 text-white" size={32} />
+            <Image src="/logo/logo.png" alt="Logo" width={32} height={32} className="w-8 h-8" />
             <span className="text-xl font-bold">Discord</span>
           </div>
 
@@ -233,7 +234,7 @@ export default function Home() {
       <footer className="bg-[#23272A] border-t border-white/10 py-12 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-center space-x-2 mb-8">
-            <Icon src="discord.svg" className="w-8 h-8 text-white" size={32} />
+            <Image src="/logo/logo.png" alt="Logo" width={32} height={32} className="w-8 h-8" />
             <span className="text-2xl font-bold">Discord</span>
           </div>
           <div className="text-center text-gray-400">

@@ -81,7 +81,11 @@ const ChatHeader = memo(function ChatHeader({
     <div className="h-12 px-4 flex items-center border-b border-[#E3E5E8] bg-[#FFFFFF] shrink-0">
       {/* Avatar và tên */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <Avatar initial={userAvatar} size="md" />
+        <Avatar 
+          initial={userAvatar && !userAvatar.startsWith('http') ? userAvatar : userName.charAt(0).toUpperCase()} 
+          avatarUrl={userAvatar && userAvatar.startsWith('http') ? userAvatar : undefined}
+          size="md" 
+        />
         <h2 className="text-base font-semibold text-[#060607] truncate">
           {userName}
         </h2>
