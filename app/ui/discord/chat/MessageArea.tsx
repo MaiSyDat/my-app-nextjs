@@ -20,7 +20,8 @@ import ChatHeader from "./ChatHeader";
 import UserProfileHeader from "./UserProfileHeader";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
-import { useFriends } from "@/app/hooks/useFriends";
+import LoadingSpinner from "../../common/LoadingSpinner";
+import { useFriendsContext } from "@/app/contexts/FriendsContext";
 import { useToast } from "@/app/ui/toast";
 import { useUnreadMessages } from "@/app/contexts/UnreadMessagesContext";
 import { getUserFromStorage, getUserIdFromStorage, getSocketUrl } from "@/app/lib/utils";
@@ -48,6 +49,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   // State quản lý messages
   const [messages, setMessages] = useState<Array<{
     id: number;
+    messageId?: string; // ID thực từ database
     type?: string;
     date?: string;
     author?: string;
@@ -56,7 +58,11 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
     content?: string;
     icon?: string;
     createdAt?: Date | string;
+    senderId?: string; // ID người gửi để kiểm tra quyền xóa
   }>>([]);
+  
+  // State quản lý loading messages
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   
   // State quản lý số lượng tin nhắn đang hiển thị (lazy loading)
   const [displayedCount, setDisplayedCount] = useState(20);
@@ -78,8 +84,8 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
     currentChatUserRef.current = currentChatUser;
   }, [currentChatUser]);
 
-  // Sử dụng useFriends hook để quản lý friends state tập trung
-  const { friends: friendsList } = useFriends();
+  // Sử dụng FriendsContext để quản lý friends state tập trung
+  const { friends: friendsList, fetchFriends } = useFriendsContext();
   
   // Sử dụng toast để hiển thị thông báo
   const { showError, showSuccess } = useToast();
@@ -205,7 +211,8 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   useEffect(() => {
     if (isUserChat && activeItem) {
       const friendId = activeItem.replace("user-", "");
-      const friend = friendsList.find(f => f.friend.id === friendId);
+      // So sánh string để đảm bảo chính xác
+      const friend = friendsList.find(f => String(f.friend.id) === String(friendId));
       
       if (friend) {
         setCurrentChatUser({
@@ -246,14 +253,16 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
           }
         })();
       } else {
+        // Nếu không tìm thấy friend trong danh sách, quay về Friends view
         setCurrentChatUser(null);
         setCurrentChatUserId(null);
+        onActiveItemChange?.("friends");
       }
     } else {
       setCurrentChatUser(null);
       setCurrentChatUserId(null);
     }
-  }, [activeItem, isUserChat, friendsList, resetUnread, setCurrentChatUserId]);
+  }, [activeItem, isUserChat, friendsList, resetUnread, setCurrentChatUserId, onActiveItemChange]);
 
   const currentUser = currentChatUser;
 
@@ -266,17 +275,30 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   const fetchMessages = useCallback(async () => {
     if (!currentUser) return;
     
-      try {
-        const userId = getUserIdFromStorage();
-        if (!userId) return;
-        
-        const response = await fetch(
-          `/api/messengers?senderId=${userId}&receiverId=${currentUser.id}`
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          const formattedMessages: Message[] = data.messages.map((msg: any, index: number) => {
+    setIsLoadingMessages(true);
+    try {
+      const userId = getUserIdFromStorage();
+      if (!userId) {
+        setIsLoadingMessages(false);
+        return;
+      }
+      
+      const response = await fetch(
+        `/api/messengers?senderId=${userId}&receiverId=${currentUser.id}`
+      );
+      
+      // Nếu không còn là bạn bè (403), đóng chat và quay về Friends view
+      if (response.status === 403) {
+        setMessages([]);
+        onActiveItemChange?.("friends");
+        showError("Bạn không còn là bạn bè với người dùng này");
+        setIsLoadingMessages(false);
+        return;
+      }
+      
+      if (response.ok) {
+        const data = await response.json();
+        const formattedMessages: Message[] = data.messages.map((msg: any, index: number) => {
             // Xử lý senderId - có thể là ObjectId string hoặc object đã populate
             let senderIdStr: string;
             if (typeof msg.senderId === 'object' && msg.senderId !== null) {
@@ -308,6 +330,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
           
           return {
             id: index + 1,
+            messageId: msg._id?.toString() || msg.id?.toString(),
             author: senderName,
             avatar: senderAvatar,
             timestamp: new Date(msg.createdAt).toLocaleString("vi-VN", {
@@ -319,17 +342,28 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
             }),
             content: msg.content,
             createdAt: msg.createdAt,
+            senderId: senderIdStr,
           };
         });
         
         setMessages(formattedMessages);
       } else {
-        setMessages([]);
+        // Nếu response không ok, kiểm tra status code
+        if (response.status === 403) {
+          setMessages([]);
+          onActiveItemChange?.("friends");
+          showError("Bạn không còn là bạn bè với người dùng này");
+        } else {
+          setMessages([]);
+        }
       }
     } catch (error) {
       setMessages([]);
+      console.error("Error fetching messages:", error);
+    } finally {
+      setIsLoadingMessages(false);
     }
-  }, [currentUser, currentUserId]);
+  }, [currentUser, currentUserId, onActiveItemChange, showError]);
 
   // Reset isScrollReady khi chuyển user
   useEffect(() => {
@@ -520,24 +554,52 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
       <div className="h-full flex flex-col bg-linear-to-br from-[#FFFFFF] via-[#F7F8F9] to-[#F2F3F5]">
         {/* Header - cố định ở trên */}
         <div className="shrink-0">
-          <ChatHeader userName={user.name} userAvatar={user.avatar} />
+          <ChatHeader 
+            userName={user.name} 
+            userAvatar={user.avatar}
+            friendId={user.id}
+            onUnfriend={() => {
+              // Quay về Friends view sau khi xóa bạn
+              onActiveItemChange?.("friends");
+            }}
+            onBlock={() => {
+              // Quay về Friends view sau khi chặn
+              onActiveItemChange?.("friends");
+            }}
+          />
         </div>
 
         {/* Message List - scrollable, chiếm phần còn lại */}
         <div className="flex-1 min-h-0 overflow-hidden relative">
-          <MessageList
-            messages={messages}
-            displayedCount={displayedCount}
-            onScroll={handleScroll}
-            containerRef={messagesContainerRef}
-            userProfileHeader={
-              <UserProfileHeader
-                userName={user.name}
-                userEmail={user.email}
-                userTag={user.tag}
-              />
-            }
-          />
+          {isLoadingMessages ? (
+            <div className="h-full flex items-center justify-center">
+              <LoadingSpinner size="lg" text="Đang tải tin nhắn..." />
+            </div>
+          ) : (
+            <MessageList
+              messages={messages}
+              displayedCount={displayedCount}
+              onScroll={handleScroll}
+              containerRef={messagesContainerRef}
+              userProfileHeader={
+                <UserProfileHeader
+                  userName={user.name}
+                  userEmail={user.email}
+                  userTag={user.tag}
+                  friendId={user.id}
+                  onUnfriend={() => {
+                    // Quay về Friends view sau khi xóa bạn
+                    onActiveItemChange?.("friends");
+                  }}
+                  onBlock={() => {
+                    // Quay về Friends view sau khi chặn
+                    onActiveItemChange?.("friends");
+                  }}
+                />
+              }
+              currentUserId={currentUserId}
+            />
+          )}
         </div>
 
         {/* Input - cố định ở dưới */}

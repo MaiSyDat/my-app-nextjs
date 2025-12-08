@@ -14,6 +14,7 @@ import { memo, useMemo } from "react";
 import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
 import StatusIndicator from "../../common/StatusIndicator";
+import { useUserStatusContext } from "@/app/contexts/UserStatusContext";
 
 // Props for RightSidebar
 interface RightSidebarProps {
@@ -23,6 +24,7 @@ interface RightSidebarProps {
 
 // Right sidebar showing user profile when chat is active, otherwise "Active Now" - Memoized
 const RightSidebar = memo(function RightSidebar({ activeItem, onClose }: RightSidebarProps) {
+  const { getUserStatus } = useUserStatusContext();
   const isUserChat = activeItem?.startsWith("user-");
 
   // User data mapping - Memoized
@@ -75,7 +77,11 @@ const RightSidebar = memo(function RightSidebar({ activeItem, onClose }: RightSi
                 shadow
               />
               <div className="absolute -bottom-0.5 -right-0.5">
-                <StatusIndicator status="online" size="lg" className="border-4 border-[#FFFFFF]" />
+                <StatusIndicator 
+                  status={activeItem ? getUserStatus(activeItem.replace("user-", "")) : "offline"} 
+                  size="lg" 
+                  className="border-4 border-[#FFFFFF]" 
+                />
               </div>
             </div>
           </div>

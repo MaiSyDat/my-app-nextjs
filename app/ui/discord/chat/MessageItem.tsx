@@ -19,23 +19,29 @@ import LinkPreview from "./LinkPreview";
 
 interface MessageItemProps {
   id: number;
+  messageId?: string;
   author: string;
   avatar: string;
   timestamp: string;
   content: string;
   type?: string;
   icon?: string;
+  senderId?: string;
+  currentUserId?: string | null;
 }
 
 // Component hiển thị 1 tin nhắn - Memoized để tránh re-render không cần thiết
 const MessageItem = memo(function MessageItem({ 
   id, 
+  messageId,
   author, 
   avatar, 
   timestamp, 
   content, 
   type,
-  icon 
+  icon,
+  senderId,
+  currentUserId
 }: MessageItemProps) {
   // Nếu là tin nhắn system (ví dụ: cuộc gọi)
   if (type === "system") {
@@ -64,7 +70,11 @@ const MessageItem = memo(function MessageItem({
 
   // Tin nhắn thông thường
   return (
-    <div className="flex gap-3 my-2 group hover:bg-[#F7F8F9]/50 rounded px-2 py-1 -mx-2">
+    <div 
+      className="flex gap-3 my-2 group hover:bg-[#F7F8F9]/50 rounded px-2 py-1 -mx-2 relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <Avatar initial={avatar} size="lg" />
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1">

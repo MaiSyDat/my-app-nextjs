@@ -297,3 +297,71 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * DELETE /api/friends
+ * Body: { userId, friendId }
+ * Xóa bạn (unfriend) - xóa friendship với status = "accepted"
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    await dbConnect();
+
+    const body = await request.json();
+    const { userId, friendId } = body;
+
+    if (!userId || !friendId) {
+      return NextResponse.json(
+        { message: "userId and friendId are required." },
+        { status: 400 }
+      );
+    }
+
+    if (userId === friendId) {
+      return NextResponse.json(
+        { message: "Cannot unfriend yourself." },
+        { status: 400 }
+      );
+    }
+
+    // Convert và normalize
+    const userIdObj = new mongoose.Types.ObjectId(userId);
+    const friendIdObj = new mongoose.Types.ObjectId(friendId);
+
+    // Chuẩn hóa: userId1 < userId2 để tránh duplicate
+    const [normalizedUserId1, normalizedUserId2] =
+      userIdObj.toString() < friendIdObj.toString()
+        ? [userIdObj, friendIdObj]
+        : [friendIdObj, userIdObj];
+
+    // Tìm và xóa friendship
+    const friendship = await Friendship.findOneAndDelete({
+      userId1: normalizedUserId1,
+      userId2: normalizedUserId2,
+      status: "accepted", // Chỉ xóa nếu đã là bạn bè
+    });
+
+    if (!friendship) {
+      return NextResponse.json(
+        { message: "Friendship not found or not accepted." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        message: "Friend removed successfully.",
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Error removing friend:", error);
+    return NextResponse.json(
+      {
+        message: "Internal server error.",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
+      { status: 500 }
+    );
+  }
+}

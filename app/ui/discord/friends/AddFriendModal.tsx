@@ -17,6 +17,7 @@ import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
 import LoadingSpinner from "../../common/LoadingSpinner";
 import { useToast } from "@/app/ui/toast";
+import { useFriendsContext } from "@/app/contexts/FriendsContext";
 
 // Props
 interface AddFriendModalProps {
@@ -43,6 +44,9 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
 
   // Sử dụng toast để hiển thị thông báo
   const { showSuccess, showError } = useToast();
+  
+  // Sử dụng FriendsContext để gửi friend request
+  const { sendFriendRequest } = useFriendsContext();
 
   // Lấy currentUserId từ localStorage
   useEffect(() => {
@@ -64,12 +68,14 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
       return;
     }
 
-    // Debounce search
+    // Debounce search - tối ưu với AbortController để cancel request cũ
+    const abortController = new AbortController();
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
         const res = await fetch(
-          `/api/users/search?q=${encodeURIComponent(searchQuery)}&currentUserId=${currentUserId}`
+          `/api/users/search?q=${encodeURIComponent(searchQuery.trim())}&currentUserId=${currentUserId}`,
+          { signal: abortController.signal, cache: 'no-store' }
         );
         if (res.ok) {
           const data = await res.json();
@@ -77,52 +83,45 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
         } else {
           setSearchResults([]);
         }
-      } catch (error) {
-        setSearchResults([]);
+      } catch (error: any) {
+        // Ignore abort errors
+        if (error.name !== 'AbortError') {
+          setSearchResults([]);
+        }
       } finally {
         setIsSearching(false);
       }
     }, 300); // Debounce 300ms
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      abortController.abort();
+    };
   }, [searchQuery, currentUserId]);
 
-  // Hàm gửi lời mời kết bạn - Memoized với useCallback
+  // Hàm gửi lời mời kết bạn - sử dụng context
   const handleSendFriendRequest = useCallback(async (friendId: string) => {
     if (!currentUserId) return;
 
     setSendingRequest(friendId);
     try {
-      const res = await fetch("/api/friends", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId1: currentUserId,
-          userId2: friendId,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        // Thành công
+      const success = await sendFriendRequest(friendId);
+      
+      if (success) {
+        // Thành công - xóa user khỏi kết quả tìm kiếm ngay lập tức
         showSuccess("Đã gửi lời mời kết bạn!");
         setSearchResults((prev) => prev.filter((user) => user.id !== friendId));
-        if (onSuccess) {
-          onSuccess();
-        }
+        onSuccess?.();
       } else {
-        // Lỗi - hiển thị thông báo
-        showError(data.message || "Có lỗi xảy ra");
+        // Lỗi đã được xử lý trong context, chỉ cần hiển thị thông báo chung
+        showError("Không thể gửi lời mời kết bạn");
       }
     } catch (error) {
       showError("Có lỗi xảy ra khi gửi lời mời");
     } finally {
       setSendingRequest(null);
     }
-  }, [currentUserId, showSuccess, showError, onSuccess]);
+  }, [currentUserId, sendFriendRequest, showSuccess, showError, onSuccess]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">

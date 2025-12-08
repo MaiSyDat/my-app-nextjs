@@ -10,12 +10,12 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Icon from "../../common/Icon";
 import FriendsList from "./FriendsList";
 import PendingRequestsList from "./PendingRequestsList";
 import AddFriendModal from "./AddFriendModal";
-import { useFriends } from "@/app/hooks/useFriends";
+import { useFriendsContext } from "@/app/contexts/FriendsContext";
 import { useToast } from "@/app/ui/toast";
 
 interface FriendsViewProps {
@@ -30,7 +30,7 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
 
-  // Sử dụng useFriends hook để quản lý state
+  // Sử dụng FriendsContext để quản lý state
   const {
     friends,
     pendingRequests,
@@ -38,8 +38,7 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
     error,
     acceptRequest,
     rejectRequest,
-    refreshAll,
-  } = useFriends();
+  } = useFriendsContext();
 
   // Sử dụng toast để hiển thị thông báo
   const { showError, showSuccess } = useToast();
@@ -57,32 +56,32 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
     localStorage.setItem("discord_activeTab", activeTab);
   }, [activeTab]);
 
-  // Handler chấp nhận lời mời kết bạn
-  const handleAcceptRequest = async (friendshipId: string) => {
+  // Handler chấp nhận lời mời kết bạn - memoized
+  const handleAcceptRequest = useCallback(async (friendshipId: string) => {
     const success = await acceptRequest(friendshipId);
     if (success) {
       showSuccess("Đã chấp nhận lời mời kết bạn!");
-    } else if (error) {
-      showError(error);
+      // Tự động chuyển sang tab "all" để thấy bạn bè mới
+      setActiveTab("all");
+    } else {
+      showError(error || "Không thể chấp nhận lời mời");
     }
-  };
+  }, [acceptRequest, showSuccess, showError, error]);
 
-  // Handler từ chối/xóa lời mời kết bạn
-  const handleRejectRequest = async (friendshipId: string) => {
+  // Handler từ chối/xóa lời mời kết bạn - memoized
+  const handleRejectRequest = useCallback(async (friendshipId: string) => {
     const success = await rejectRequest(friendshipId);
     if (success) {
       showSuccess("Đã từ chối lời mời kết bạn");
-    } else if (error) {
-      showError(error);
+    } else {
+      showError(error || "Không thể từ chối lời mời");
     }
-  };
+  }, [rejectRequest, showSuccess, showError, error]);
 
-  // Handler click vào bạn bè
-  const handleFriendClick = (friendId: string) => {
-    if (onActiveItemChange) {
-      onActiveItemChange(`user-${friendId}`);
-    }
-  };
+  // Handler click vào bạn bè - memoized
+  const handleFriendClick = useCallback((friendId: string) => {
+    onActiveItemChange?.(`user-${friendId}`);
+  }, [onActiveItemChange]);
 
   return (
     <>
@@ -151,7 +150,6 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
           onClose={() => setIsAddFriendOpen(false)}
           onSuccess={() => {
             setIsAddFriendOpen(false);
-            refreshAll();
           }}
         />
       )}

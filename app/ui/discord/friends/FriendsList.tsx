@@ -16,6 +16,7 @@ import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
 import StatusIndicator from "../../common/StatusIndicator";
 import LoadingSpinner from "../../common/LoadingSpinner";
+import { useUserStatusContext } from "@/app/contexts/UserStatusContext";
 
 interface Friend {
   friendshipId: string;
@@ -35,6 +36,8 @@ interface FriendsListProps {
 
 // Component hiển thị danh sách bạn bè (All tab) - Memoized
 const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick, onAddFriendClick }: FriendsListProps) {
+  const { getUserStatus } = useUserStatusContext();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -94,7 +97,7 @@ const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick,
                 hoverScale
               />
               <div className="absolute -bottom-0.5 -right-0.5">
-                <StatusIndicator status="online" size="lg" />
+                <StatusIndicator status={getUserStatus(friendItem.friend.id)} size="lg" />
               </div>
             </div>
             

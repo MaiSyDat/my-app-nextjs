@@ -15,8 +15,10 @@ import { useState, useEffect, useMemo } from "react";
 import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
 import StatusIndicator from "../../common/StatusIndicator";
-import { useFriends } from "@/app/hooks/useFriends";
+import { useFriendsContext } from "@/app/contexts/FriendsContext";
 import { useUnreadMessages } from "@/app/contexts/UnreadMessagesContext";
+import { useUserStatusContext } from "@/app/contexts/UserStatusContext";
+import { useUserStatus } from "@/app/hooks/useUserStatus";
 import { getUserFromStorage } from "@/app/lib/utils";
 
 // Props
@@ -45,34 +47,45 @@ export default function ChannelSidebar({
     id: string;
   } | null>(null);
   
-  // Sử dụng useFriends hook để quản lý friends state tập trung
-  const { friends, loading: loadingFriends } = useFriends();
+  // Sử dụng FriendsContext để quản lý friends state tập trung
+  const { friends, loading: loadingFriends } = useFriendsContext();
   
   // Sử dụng useUnreadMessages để lấy số tin nhắn chưa đọc
   const { unreadCounts } = useUnreadMessages();
 
-  // Convert friends thành directMessages format với unread count
+  // Sử dụng useUserStatusContext để lấy trạng thái của users
+  const { getUserStatus } = useUserStatusContext();
+  
+  // Sử dụng useUserStatus để lấy trạng thái của user hiện tại
+  const { status: currentUserStatus } = useUserStatus();
+
+  // Convert friends thành directMessages format với unread count và status
   // Sử dụng useMemo để tránh re-compute không cần thiết
   const directMessages = useMemo(() => {
     return friends.map((friendItem) => {
       const friendId = String(friendItem.friend.id);
       const unreadCount = unreadCounts[friendId] || 0;
+      const status = getUserStatus(friendId);
       return {
         id: friendItem.friend.id,
         username: friendItem.friend.username,
         email: friendItem.friend.email,
-        status: "online" as const,
+        status: status,
         unreadCount: unreadCount > 5 ? 5 : unreadCount,
         unreadCountRaw: unreadCount,
         activity: undefined,
       };
     });
-  }, [friends, unreadCounts]);
+  }, [friends, unreadCounts, getUserStatus]);
 
   useEffect(() => {
     const user = getUserFromStorage();
     if (user) {
-      setUser(user);
+      setUser({
+        username: user.username || "",
+        email: user.email || "",
+        id: user.id || user._id || "",
+      });
     }
   }, []);
 
@@ -219,7 +232,7 @@ export default function ChannelSidebar({
                     />
                     <div className="absolute -bottom-0.5 -right-0.5">
                       <StatusIndicator
-                        status={dmUser.status === "online" ? "online" : "offline"}
+                        status={dmUser.status}
                         size="md"
                         animate
                       />
@@ -269,7 +282,7 @@ export default function ChannelSidebar({
               hoverScale
             />
             <div className="absolute -bottom-0.5 -right-0.5">
-              <StatusIndicator status="online" size="sm" animate />
+              <StatusIndicator status={currentUserStatus} size="sm" animate />
             </div>
           </div>
           <div className="text-sm min-w-0 flex-1 overflow-hidden">

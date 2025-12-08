@@ -65,6 +65,7 @@ app.prepare().then(() => {
    */
   const userSocketMap = new Map(); // userId -> socketId (chỉ lưu socketId mới nhất)
   const userSocketSetMap = new Map(); // userId -> Set<socketId> (lưu tất cả socketIds)
+  const userStatusMap = new Map(); // userId -> status (online/idle/offline)
 
   // Export io để có thể sử dụng ở nơi khác (nếu cần)
   global.io = io;
@@ -92,10 +93,50 @@ app.prepare().then(() => {
       }
       userSocketSetMap.get(userId).add(socket.id);
       
+      // Set status mặc định là "online" khi connect
+      userStatusMap.set(userId, 'online');
+      
       socket.userId = userId;
+      
+      // Gửi danh sách tất cả users đang online/idle cho user mới connect
+      // Đợi một chút để đảm bảo socket đã sẵn sàng nhận event
+      setImmediate(() => {
+        const onlineUsers = [];
+        userStatusMap.forEach((status, uid) => {
+          if (uid !== userId && (status === 'online' || status === 'idle')) {
+            onlineUsers.push({ userId: uid, status });
+          }
+        });
+        
+        // Gửi danh sách users online/idle cho user mới (luôn gửi, kể cả rỗng)
+        socket.emit('users:status', onlineUsers);
+      });
       
       // Broadcast cho các user khác biết user này online
       socket.broadcast.emit('user:online', userId);
+      socket.broadcast.emit('user:status', {
+        userId: userId,
+        status: 'online',
+      });
+    });
+
+    /**
+     * Event: user:status
+     * Khi user thay đổi trạng thái (online/idle/offline)
+     * - Lưu trạng thái vào userStatusMap
+     * - Broadcast cho các user khác biết trạng thái mới
+     */
+    socket.on('user:status', (data) => {
+      if (!data || !data.userId || !data.status) return;
+      
+      // Lưu trạng thái vào map
+      userStatusMap.set(data.userId, data.status);
+      
+      // Broadcast cho các user khác biết trạng thái mới
+      socket.broadcast.emit('user:status', {
+        userId: data.userId,
+        status: data.status,
+      });
     });
 
     /**
@@ -214,9 +255,15 @@ app.prepare().then(() => {
         if (socketIds) {
           socketIds.delete(socket.id);
           if (socketIds.size === 0) {
+            // Không còn socket nào, user offline
             userSocketSetMap.delete(userId);
             userSocketMap.delete(userId);
+            userStatusMap.set(userId, 'offline');
             socket.broadcast.emit('user:offline', userId);
+            socket.broadcast.emit('user:status', {
+              userId: userId,
+              status: 'offline',
+            });
           } else {
             // Nếu còn socketIds khác, cập nhật socketId mới nhất
             const latestSocketId = Array.from(socketIds)[socketIds.size - 1];
@@ -224,6 +271,7 @@ app.prepare().then(() => {
           }
         } else {
           userSocketMap.delete(userId);
+          userStatusMap.set(userId, 'offline');
         }
       }
     });

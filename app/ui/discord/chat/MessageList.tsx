@@ -17,6 +17,7 @@ import MessageItem from "./MessageItem";
 
 interface Message {
   id: number;
+  messageId?: string;
   type?: string;
   date?: string;
   author?: string;
@@ -25,6 +26,7 @@ interface Message {
   content?: string;
   icon?: string;
   createdAt?: Date | string;
+  senderId?: string;
 }
 
 interface MessageListProps {
@@ -33,10 +35,11 @@ interface MessageListProps {
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   userProfileHeader?: React.ReactNode;
+  currentUserId?: string | null;
 }
 
 // Component hiển thị danh sách tin nhắn với date divider logic - Memoized
-const MessageList = memo(function MessageList({ messages, displayedCount, onScroll, containerRef, userProfileHeader }: MessageListProps) {
+const MessageList = memo(function MessageList({ messages, displayedCount, onScroll, containerRef, userProfileHeader, currentUserId }: MessageListProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const ref = containerRef || internalRef;
 
@@ -131,12 +134,15 @@ const MessageList = memo(function MessageList({ messages, displayedCount, onScro
             )}
             <MessageItem
               id={msg.id}
+              messageId={msg.messageId}
               author={msg.author || ""}
               avatar={msg.avatar || ""}
               timestamp={msg.timestamp || ""}
               content={msg.content || ""}
               type={msg.type}
               icon={msg.icon}
+              senderId={msg.senderId}
+              currentUserId={currentUserId}
             />
           </div>
         );

@@ -12,15 +12,53 @@
 
 import { memo } from "react";
 import Icon from "../../common/Icon";
+import { useToast } from "@/app/ui/toast";
+import { useFriendsContext } from "@/app/contexts/FriendsContext";
 
 interface UserProfileHeaderProps {
   userName: string;
   userEmail: string;
   userTag?: string;
+  friendId?: string;
+  onUnfriend?: () => void;
+  onBlock?: () => void;
 }
 
 // Component hiển thị profile user ở đầu danh sách tin nhắn - Memoized
-const UserProfileHeader = memo(function UserProfileHeader({ userName, userEmail, userTag }: UserProfileHeaderProps) {
+const UserProfileHeader = memo(function UserProfileHeader({ 
+  userName, 
+  userEmail, 
+  userTag,
+  friendId,
+  onUnfriend,
+  onBlock
+}: UserProfileHeaderProps) {
+  const { showError, showSuccess } = useToast();
+  const { unfriend, blockUser } = useFriendsContext();
+
+  const handleUnfriend = async () => {
+    if (!friendId) return;
+
+    const success = await unfriend(friendId);
+    if (success) {
+      showSuccess("Đã xóa bạn thành công");
+      onUnfriend?.();
+    } else {
+      showError("Không thể xóa bạn");
+    }
+  };
+
+  const handleBlock = async () => {
+    if (!friendId) return;
+
+    const success = await blockUser(friendId);
+    if (success) {
+      showSuccess("Đã chặn người dùng thành công");
+      onBlock?.();
+    } else {
+      showError("Không thể chặn người dùng");
+    }
+  };
   return (
     <div className="flex flex-col items-center py-8 mb-4">
       <div className="w-20 h-20 rounded-full bg-[#ED4245] flex items-center justify-center mb-4 shadow-lg">
@@ -50,10 +88,16 @@ const UserProfileHeader = memo(function UserProfileHeader({ userName, userEmail,
           </span>
         </div>
         <div className="flex gap-2">
-          <button className="flex-1 px-4 py-2 bg-[#E3E5E8] hover:bg-[#D1D9DE] text-[#060607] text-sm font-medium rounded transition-colors">
+          <button 
+            onClick={handleUnfriend}
+            className="flex-1 px-4 py-2 bg-[#E3E5E8] hover:bg-[#D1D9DE] text-[#060607] text-sm font-medium rounded transition-colors"
+          >
             Xóa Bạn
           </button>
-          <button className="flex-1 px-4 py-2 bg-[#E3E5E8] hover:bg-[#D1D9DE] text-[#060607] text-sm font-medium rounded transition-colors">
+          <button 
+            onClick={handleBlock}
+            className="flex-1 px-4 py-2 bg-[#E3E5E8] hover:bg-[#D1D9DE] text-[#060607] text-sm font-medium rounded transition-colors"
+          >
             Chặn
           </button>
         </div>
