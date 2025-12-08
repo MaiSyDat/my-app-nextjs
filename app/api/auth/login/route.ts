@@ -1,5 +1,18 @@
+/**
+ * API Route: Đăng nhập user
+ * 
+ * POST /api/auth/login
+ * Body: { email, password }
+ * 
+ * Xử lý:
+ * - Validate email và password
+ * - Hash password và so sánh với database
+ * - Trả về user info (không bao gồm password)
+ * - Lưu user vào localStorage ở client
+ */
+
 import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/app/lib/mongodb";
+import dbConnect from "@/app/lib/database/mongodb";
 import User from "@/app/models/User";
 import { createHash } from "crypto";
 
@@ -60,8 +73,6 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Login error:", error);
-
     return NextResponse.json(
       { message: "An error occurred. Please try again." },
       { status: 500 }

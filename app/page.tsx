@@ -1,32 +1,32 @@
+/**
+ * Trang chủ (Landing page)
+ * 
+ * Trang này:
+ * - Hiển thị landing page với thông tin về ứng dụng
+ * - Button "Open Discord" để mở ứng dụng
+ * - Redirect về /discord nếu đã đăng nhập, /login nếu chưa
+ * - Route: /
+ */
+
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import Image from "next/image";
-
-// Icon Component helper
-interface IconProps {
-  src: string;
-  className?: string;
-  size?: number;
-}
-
-const Icon = ({ src, className = "w-6 h-6", size = 24 }: IconProps) => {
-  return (
-    <Image
-      src={`/icon/${src}`}
-      alt="icon"
-      width={size}
-      height={size}
-      className={className}
-      unoptimized
-    />
-  );
-};
+import Icon from "@/app/ui/common/Icon";
 
 // Landing page với hero section và các tính năng
 export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  // Handler cho nút Open Discord - check login trước khi redirect
+  const handleOpenDiscord = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const token = localStorage.getItem("token");
+    if (token) {
+      window.location.href = "/discord";
+    } else {
+      window.location.href = "/login";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-linear-to-r from-blue-800 to-purple-600 text-white overflow-x-hidden">
@@ -60,12 +60,13 @@ export default function Home() {
 
           {/* Nút login và menu mobile */}
           <div className="flex items-center space-x-4">
-            <Link
+            <a
               href="/login"
-              className="px-4 py-2 bg-white text-blue-800 rounded-full font-medium hover:shadow-lg transition-all hover:scale-105"
+              onClick={handleOpenDiscord}
+              className="px-4 py-2 bg-white text-blue-800 rounded-full font-medium hover:shadow-lg transition-all hover:scale-105 cursor-pointer"
             >
-              Log in
-            </Link>
+              Open Discord
+            </a>
             <button
               className="md:hidden"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -93,12 +94,13 @@ export default function Home() {
               <Icon src="download.svg" className="w-5 h-5 text-blue-800" size={20} />
               Download for Windows
             </button>
-            <Link
+            <a
               href="/login"
-              className="px-8 py-4 bg-[#23272A] text-white rounded-full font-semibold text-lg hover:bg-[#2C2F33] transition-all"
+              onClick={handleOpenDiscord}
+              className="px-8 py-4 bg-[#23272A] text-white rounded-full font-semibold text-lg hover:bg-[#2C2F33] transition-all cursor-pointer"
             >
               Open Discord in your browser
-            </Link>
+            </a>
           </div>
         </div>
       </section>

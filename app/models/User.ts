@@ -1,5 +1,14 @@
+/**
+ * Mongoose Schema và Model cho User
+ * 
+ * Schema này định nghĩa:
+ * - username: Tên người dùng (required, unique, index)
+ * - email: Email (required, unique, index)
+ * - password: Mật khẩu đã hash (required)
+ * - Timestamps tự động (createdAt, updatedAt)
+ */
+
 import mongoose, { Document, Model, Schema} from "mongoose";
-import { use } from "react";
 
 // Interface cho User document
 export interface IUser extends Document {

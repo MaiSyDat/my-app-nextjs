@@ -1,8 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/app/lib/mongodb";
-import User from "@/app/models/User";
+/**
+ * API Route: Lấy danh sách users
+ * 
+ * GET /api/users
+ * 
+ * Trả về danh sách tất cả users trong database
+ * (Có thể thêm pagination và filtering sau)
+ */
 
-// Get: Lấy danh sách users
+import { NextRequest, NextResponse } from "next/server";
+import dbConnect from "@/app/lib/database/mongodb";
+import User from "@/app/models/User";
 export async function GET(request: NextRequest) {
     // Connect đến database
     await dbConnect();

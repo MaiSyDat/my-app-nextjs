@@ -1,29 +1,21 @@
+/**
+ * Component Form đăng nhập
+ * 
+ * Component này:
+ * - Input fields cho email và password
+ * - Validation và error handling
+ * - Gửi request đến /api/auth/login
+ * - Lưu user info vào localStorage
+ * - Redirect về /discord sau khi đăng nhập thành công
+ * - Link đến trang đăng ký
+ */
+
 "use client";
 
 import Link from "next/link";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-
-// Icon Component helper
-interface IconProps {
-  src: string;
-  className?: string;
-  size?: number;
-}
-
-const Icon = ({ src, className = "w-6 h-6", size = 24 }: IconProps) => {
-  return (
-    <Image
-      src={`/icon/${src}`}
-      alt="icon"
-      width={size}
-      height={size}
-      className={className}
-      unoptimized
-    />
-  );
-};
+import Icon from "@/app/ui/common/Icon";
 
 // Component form đăng nhập với toggle password visibility
 export default function LoginForm() {
@@ -70,7 +62,6 @@ export default function LoginForm() {
       }
     } catch (error) {
       setError("An error occurred. Please try again.");
-      console.log("Error during login: ", error);
     } finally {
       setLoading(false);
     }

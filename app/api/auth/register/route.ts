@@ -1,5 +1,19 @@
+/**
+ * API Route: Đăng ký user mới
+ * 
+ * POST /api/auth/register
+ * Body: { username, email, password }
+ * 
+ * Xử lý:
+ * - Validate username, email, password
+ * - Kiểm tra email đã tồn tại chưa
+ * - Hash password bằng SHA-256
+ * - Tạo user mới trong database
+ * - Trả về user info (không bao gồm password)
+ */
+
 import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/app/lib/mongodb";
+import dbConnect from "@/app/lib/database/mongodb";
 import User from "@/app/models/User";
 import { createHash } from "crypto";
 
@@ -89,8 +103,6 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error: any) {
-    console.error("Registration error:", error);
-
     // Xử lý lỗi duplicate key từ MongoDB
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];

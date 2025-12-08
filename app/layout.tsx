@@ -1,6 +1,17 @@
+/**
+ * Root Layout của ứng dụng Next.js
+ * 
+ * Layout này:
+ * - Định nghĩa metadata và fonts
+ * - Import global CSS
+ * - Wrap toàn bộ app với ToastProvider
+ * - Cung cấp ToastContainer để hiển thị notifications
+ */
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "./ui/toast/ToastContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,11 +34,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
       >
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

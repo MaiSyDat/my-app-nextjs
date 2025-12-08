@@ -1,29 +1,21 @@
+/**
+ * Component Form đăng ký
+ * 
+ * Component này:
+ * - Input fields cho username, email và password
+ * - Validation và error handling
+ * - Gửi request đến /api/auth/register
+ * - Lưu user info vào localStorage
+ * - Redirect về /discord sau khi đăng ký thành công
+ * - Link đến trang đăng nhập
+ */
+
 "use client";
 
 import Link from "next/link";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-
-// Icon Component helper
-interface IconProps {
-  src: string;
-  className?: string;
-  size?: number;
-}
-
-const Icon = ({ src, className = "w-6 h-6", size = 24 }: IconProps) => {
-  return (
-    <Image
-      src={`/icon/${src}`}
-      alt="icon"
-      width={size}
-      height={size}
-      className={className}
-      unoptimized
-    />
-  );
-};
+import Icon from "@/app/ui/common/Icon";
 
 // Component form đăng ký với validation và visual feedback
 export default function RegisterForm() {
@@ -109,7 +101,6 @@ export default function RegisterForm() {
       }
     } catch (error) {
       setError("An error occurred. Please try again.");
-      console.log("Error during registration: ", error);
     } finally {
       setLoading(false);
     }
