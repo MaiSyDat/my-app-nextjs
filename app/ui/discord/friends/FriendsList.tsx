@@ -24,7 +24,10 @@ interface Friend {
     id: string;
     username: string;
     email: string;
+    displayName?: string | null;
+    avatar?: string | null;
   };
+  status?: string; // Thêm status để filter
 }
 
 interface FriendsListProps {
@@ -46,7 +49,12 @@ const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick,
     );
   }
 
-  if (friends.length === 0) {
+  // Filter chỉ hiển thị accepted friends
+  const acceptedFriends = friends.filter((friendItem) => {
+    return friendItem.status === "accepted" || !friendItem.status;
+  });
+
+  if (acceptedFriends.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center max-w-md">
@@ -68,7 +76,7 @@ const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick,
           </p>
           <button
             onClick={onAddFriendClick}
-            className="mt-6 px-6 py-2.5 bg-linear-to-r from-[#5865F2] to-[#4752C4] hover:from-[#4752C4] hover:to-[#3C45A5] text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
+            className="mt-6 px-6 py-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-semibold rounded-lg transition-colors"
           >
             Add Friend
           </button>
@@ -80,10 +88,10 @@ const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick,
   return (
     <div className="p-4">
       <h3 className="text-xs font-bold text-[#747F8D] uppercase tracking-wider px-2 mb-2">
-        Tất cả bạn bè — {friends.length}
+        All Friends — {acceptedFriends.length}
       </h3>
       <div className="space-y-1">
-        {friends.map((friendItem) => (
+        {acceptedFriends.map((friendItem) => (
           <div
             key={friendItem.friendshipId}
             onClick={() => onFriendClick(friendItem.friend.id)}
@@ -92,7 +100,8 @@ const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick,
             {/* Avatar với status indicator */}
             <div className="relative shrink-0">
               <Avatar
-                initial={friendItem.friend.username.charAt(0)}
+                initial={(friendItem.friend.displayName || friendItem.friend.username).charAt(0).toUpperCase()}
+                avatarUrl={friendItem.friend.avatar || undefined}
                 size="lg"
                 hoverScale
               />
@@ -105,7 +114,7 @@ const FriendsList = memo(function FriendsList({ friends, loading, onFriendClick,
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h4 className="text-base font-semibold text-[#060607] truncate group-hover:text-[#5865F2] transition-colors">
-                  {friendItem.friend.username}
+                  {friendItem.friend.displayName || friendItem.friend.username}
                 </h4>
               </div>
               <p className="text-sm text-[#747F8D] truncate">

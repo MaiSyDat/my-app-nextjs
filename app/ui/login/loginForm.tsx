@@ -99,18 +99,18 @@ export default function LoginForm() {
 
       {/* Form đăng nhập */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Input email với icon và floating label */}
+        {/* Input email/username với icon và floating label */}
         <div className="relative group">
           <div className="absolute left-0 top-2.5 text-gray-400 group-focus-within:text-purple-400 transition-colors">
             <Icon src="email.svg" className="h-5 w-5" size={20} />
           </div>
           <input
-            type="email"
+            type="text"
             id="email"
             name="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="john@example.com"
+            placeholder="Email or username"
             required
             className="peer h-10 w-full pl-8 border-b-2 border-gray-300 text-white bg-transparent placeholder-transparent focus:outline-none focus:border-purple-500 transition-colors"
           />
@@ -120,7 +120,7 @@ export default function LoginForm() {
                       peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-2
                       peer-focus:-top-3.5 peer-focus:text-purple-500 peer-focus:text-sm"
           >
-            Email address
+            Email or username
           </label>
         </div>
 

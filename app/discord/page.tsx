@@ -1,21 +1,19 @@
 /**
- * Trang Discord chính
- * 
- * Trang này:
- * - Được bảo vệ bởi AuthGuard (redirect về /login nếu chưa đăng nhập)
- * - Hiển thị DiscordLayout với tất cả các components
- * - Route: /discord
+ * Redirect từ /discord về /channels/me
  */
 
 "use client";
 
-import DiscordLayout from "../ui/discord/layout/DiscordLayout";
-import AuthGuard from "../ui/discord/auth/AuthGuard";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
 export default function DiscordPage() {
-  return (
-    <AuthGuard>
-      <DiscordLayout />
-    </AuthGuard>
-  );
+  const router = useRouter();
+  
+  useEffect(() => {
+    router.replace("/channels/me");
+  }, [router]);
+  
+  return null;
 }
 

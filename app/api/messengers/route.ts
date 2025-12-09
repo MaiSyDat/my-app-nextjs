@@ -17,6 +17,7 @@ import dbConnect from "@/app/lib/database/mongodb";
 import Messenger from "@/app/models/Messenger";
 import Friendship from "@/app/models/Friendship";
 import User from "@/app/models/User"; // Import User model để đảm bảo được đăng ký trước khi populate
+import { normalizeObjectId } from "@/app/lib/utils/serverApiUtils";
 
 // GET: Lấy danh sách tin nhắn giữa 2 người
 export async function GET(request: NextRequest) {
@@ -38,31 +39,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Kiểm tra 2 người đã là bạn bè chưa
-    const friendship = await Friendship.findOne({
-      $or: [
-        { userId1: senderId, userId2: receiverId },
-        { userId1: receiverId, userId2: senderId },
-      ],
-      status: "accepted",
-    });
-
-    if (!friendship) {
-      return NextResponse.json(
-        { message: "You are not friends with this user." },
-        { status: 403 }
-      );
-    }
+    // Không kiểm tra friendship status để xem tin nhắn cũ
+    // Cho phép xem tin nhắn cũ ngay cả khi đã unfriend hoặc block
+    // Chỉ cần kiểm tra senderId và receiverId hợp lệ
 
     // Validate và convert ObjectId
-    const mongoose = await import("mongoose");
-    let senderIdObj: mongoose.Types.ObjectId;
-    let receiverIdObj: mongoose.Types.ObjectId;
-
-    try {
-      senderIdObj = new mongoose.Types.ObjectId(senderId);
-      receiverIdObj = new mongoose.Types.ObjectId(receiverId);
-    } catch (error) {
+    const senderIdObj = normalizeObjectId(senderId);
+    const receiverIdObj = normalizeObjectId(receiverId);
+    
+    if (!senderIdObj || !receiverIdObj) {
       return NextResponse.json(
         { message: "Invalid senderId or receiverId format." },
         { status: 400 }
@@ -78,8 +63,8 @@ export async function GET(request: NextRequest) {
       isDeleted: false, // Chỉ lấy tin nhắn chưa bị xóa
     })
       .select("_id senderId receiverId content messageType fileUrl fileName fileSize replyTo isRead readAt createdAt updatedAt")
-      .populate("senderId", "username email")
-      .populate("receiverId", "username email")
+      .populate("senderId", "username email displayName avatar")
+      .populate("receiverId", "username email displayName avatar")
       .populate("replyTo", "content senderId")
       .sort({ createdAt: -1 }) // Sắp xếp mới nhất trước
       .limit(Math.min(limit, 100)) // Giới hạn tối đa 100 messages
@@ -128,13 +113,10 @@ export async function POST(request: NextRequest) {
 
     // Validate và convert ObjectId
     const mongoose = await import("mongoose");
-    let senderIdObj: mongoose.Types.ObjectId;
-    let receiverIdObj: mongoose.Types.ObjectId;
-
-    try {
-      senderIdObj = new mongoose.Types.ObjectId(senderId);
-      receiverIdObj = new mongoose.Types.ObjectId(receiverId);
-    } catch (error) {
+    const senderIdObj = normalizeObjectId(senderId);
+    const receiverIdObj = normalizeObjectId(receiverId);
+    
+    if (!senderIdObj || !receiverIdObj) {
       return NextResponse.json(
         { message: "Invalid senderId or receiverId format." },
         { status: 400 }

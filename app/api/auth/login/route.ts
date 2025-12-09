@@ -38,11 +38,17 @@ export async function POST(request: NextRequest) {
     // Kết nối database
     await dbConnect();
 
-    // Tìm user theo email
-    const user = await User.findOne({ email });
+    // Xác định email hay username (kiểm tra có @ không)
+    const isEmail = email.includes("@");
+    const searchField = isEmail 
+      ? { email: { $regex: new RegExp(`^${email.trim()}$`, "i") } }
+      : { username: { $regex: new RegExp(`^${email.trim()}$`, "i") } };
+
+    // Tìm user theo email hoặc username (case-insensitive)
+    const user = await User.findOne(searchField);
     if (!user) {
       return NextResponse.json(
-        { message: "Invalid email or password." },
+        { message: "Invalid email/username or password." },
         { status: 401 }
       );
     }
@@ -51,7 +57,7 @@ export async function POST(request: NextRequest) {
     const hashedPassword = hashPassword(password);
     if (user.password !== hashedPassword) {
       return NextResponse.json(
-        { message: "Invalid email or password." },
+        { message: "Invalid email/username or password." },
         { status: 401 }
       );
     }

@@ -25,17 +25,15 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Kiểm tra token trong localStorage, redirect về login nếu không có token
   useEffect(() => {
-    // Kiểm tra token trong localStorage
     const token = localStorage.getItem("token");
 
     if (!token) {
-      // Nếu không có token, redirect về trang login
       router.push("/login");
       return;
     }
 
-    // Nếu có token, cho phép truy cập
     setIsAuthenticated(true);
     setIsLoading(false);
   }, [router]);

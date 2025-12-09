@@ -11,6 +11,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Icon from "../../common/Icon";
 import FriendsList from "./FriendsList";
 import PendingRequestsList from "./PendingRequestsList";
@@ -27,6 +28,7 @@ interface FriendsViewProps {
  * Sử dụng useFriends hook để quản lý state tập trung
  */
 export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
 
@@ -56,32 +58,39 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
     localStorage.setItem("discord_activeTab", activeTab);
   }, [activeTab]);
 
-  // Handler chấp nhận lời mời kết bạn - memoized
+  /**
+   * Xử lý chấp nhận lời mời kết bạn
+   */
   const handleAcceptRequest = useCallback(async (friendshipId: string) => {
     const success = await acceptRequest(friendshipId);
     if (success) {
-      showSuccess("Đã chấp nhận lời mời kết bạn!");
+      showSuccess("Friend request accepted!");
       // Tự động chuyển sang tab "all" để thấy bạn bè mới
       setActiveTab("all");
     } else {
-      showError(error || "Không thể chấp nhận lời mời");
+      showError(error || "Unable to accept friend request");
     }
   }, [acceptRequest, showSuccess, showError, error]);
 
-  // Handler từ chối/xóa lời mời kết bạn - memoized
+  /**
+   * Xử lý từ chối lời mời kết bạn
+   */
   const handleRejectRequest = useCallback(async (friendshipId: string) => {
     const success = await rejectRequest(friendshipId);
     if (success) {
-      showSuccess("Đã từ chối lời mời kết bạn");
+      showSuccess("Friend request declined");
     } else {
-      showError(error || "Không thể từ chối lời mời");
+      showError(error || "Unable to decline friend request");
     }
   }, [rejectRequest, showSuccess, showError, error]);
 
-  // Handler click vào bạn bè - memoized
+  /**
+   * Xử lý khi click vào bạn bè để mở chat
+   */
   const handleFriendClick = useCallback((friendId: string) => {
+    router.push(`/channels/me/${friendId}`);
     onActiveItemChange?.(`user-${friendId}`);
-  }, [onActiveItemChange]);
+  }, [onActiveItemChange, router]);
 
   return (
     <>
@@ -97,9 +106,9 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
           <div className="ml-auto flex gap-2">
             <button
               onClick={() => setActiveTab("all")}
-              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 shadow-md ${
+              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 activeTab === "all"
-                  ? "text-white bg-linear-to-r from-[#5865F2] to-[#4752C4]"
+                  ? "text-white bg-[#5865F2]"
                   : "text-[#060607] bg-[#E3E5E8] hover:bg-[#D1D9DE]"
               }`}
             >
@@ -107,9 +116,9 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
             </button>
             <button
               onClick={() => setActiveTab("pending")}
-              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 shadow-md ${
+              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 activeTab === "pending"
-                  ? "text-white bg-linear-to-r from-[#5865F2] to-[#4752C4]"
+                  ? "text-white bg-[#5865F2]"
                   : "text-[#060607] bg-[#E3E5E8] hover:bg-[#D1D9DE]"
               }`}
             >
@@ -117,7 +126,7 @@ export default function FriendsView({ onActiveItemChange }: FriendsViewProps) {
             </button>
             <button
               onClick={() => setIsAddFriendOpen(true)}
-              className="px-4 py-1.5 text-sm font-semibold text-white bg-linear-to-r from-[#5865F2] to-[#4752C4] hover:from-[#4752C4] hover:to-[#3C45A5] rounded-lg transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105"
+              className="px-4 py-1.5 text-sm font-semibold text-white bg-[#23A559] hover:bg-[#1E8E4A] rounded-lg transition-colors"
             >
               Add Friend
             </button>

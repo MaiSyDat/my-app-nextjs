@@ -59,6 +59,7 @@ TitleBar.displayName = "TitleBar";
 const LinkPreview = memo(function LinkPreview({ url }: LinkPreviewProps) {
   const [preview, setPreview] = useState<PreviewData | null>(null);
 
+  // Fetch metadata từ API, dùng isMounted để tránh setState sau khi unmount
   useEffect(() => {
     let isMounted = true;
     fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)

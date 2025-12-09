@@ -16,6 +16,7 @@ import Link from "next/link";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/app/ui/common/Icon";
+import { validateUsername } from "@/app/lib/utils/usernameUtils";
 
 // Component form đăng ký với validation và visual feedback
 export default function RegisterForm() {
@@ -44,9 +45,10 @@ export default function RegisterForm() {
       return;
     }
 
-    // Validation độ dài username
-    if (username.length < 3) {
-      setError("Username must be at least 3 characters.");
+    // Validation username (không normalize, chỉ báo lỗi)
+    const usernameValidation = validateUsername(username);
+    if (!usernameValidation.isValid) {
+      setError(usernameValidation.error || "Invalid username.");
       setLoading(false);
       return;
     }
@@ -81,7 +83,7 @@ export default function RegisterForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username,
+          username: username.trim(),
           email,
           password,
         }),

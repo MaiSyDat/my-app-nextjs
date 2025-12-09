@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/app/lib/database/mongodb";
 import User from "@/app/models/User";
 import { createHash } from "crypto";
+import { validateUsername } from "@/app/lib/utils/usernameUtils";
 
 // Hàm hash mật khẩu sử dụng SHA-256
 function hashPassword(password: string): string {
@@ -53,10 +54,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validation độ dài username
-    if (username.length < 3) {
+    // Validation username (không normalize, chỉ báo lỗi)
+    const trimmedUsername = username.trim();
+    const usernameValidation = validateUsername(trimmedUsername);
+    if (!usernameValidation.isValid) {
       return NextResponse.json(
-        { message: "Username must be at least 3 characters." },
+        { message: usernameValidation.error || "Invalid username." },
         { status: 400 }
       );
     }
@@ -64,17 +67,22 @@ export async function POST(request: NextRequest) {
     // Kết nối database
     await dbConnect();
 
-    // Kiểm tra email đã tồn tại chưa
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    // Kiểm tra email đã tồn tại chưa (case-insensitive)
+    const trimmedEmail = email.trim().toLowerCase();
+    const existingEmail = await User.findOne({ 
+      email: { $regex: new RegExp(`^${trimmedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } 
+    });
+    if (existingEmail) {
       return NextResponse.json(
         { message: "This email is already in use." },
         { status: 400 }
       );
     }
 
-    // Kiểm tra username đã tồn tại chưa
-    const existingUsername = await User.findOne({ username });
+    // Kiểm tra username đã tồn tại chưa (case-insensitive)
+    const existingUsername = await User.findOne({ 
+      username: { $regex: new RegExp(`^${trimmedUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } 
+    });
     if (existingUsername) {
       return NextResponse.json(
         { message: "This username is already taken." },
@@ -85,8 +93,8 @@ export async function POST(request: NextRequest) {
     // Hash password và tạo user mới
     const hashedPassword = hashPassword(password);
     const newUser = await User.create({
-      username,
-      email,
+      username: trimmedUsername,
+      email: trimmedEmail,
       password: hashedPassword,
     });
 

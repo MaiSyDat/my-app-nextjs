@@ -14,17 +14,18 @@
 "use client";
 
 import { useRef, useEffect, useState, useLayoutEffect, useCallback, useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import dynamic from "next/dynamic";
 import ChatHeader from "./ChatHeader";
 import UserProfileHeader from "./UserProfileHeader";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
-import LoadingSpinner from "../../common/LoadingSpinner";
 import { useFriendsContext } from "@/app/contexts/FriendsContext";
 import { useToast } from "@/app/ui/toast";
 import { useUnreadMessages } from "@/app/contexts/UnreadMessagesContext";
-import { getUserFromStorage, getUserIdFromStorage, getSocketUrl } from "@/app/lib/utils";
+import { getUserIdFromStorage, getSocketUrl, formatAvatarUrl, formatMessage, markMessagesAsRead, getDisplayName, getInitials } from "@/app/lib/utils";
+import { useCurrentUser } from "@/app/hooks/useCurrentUser";
 import type { Message, ChatUser } from "@/app/types";
 
 // Lazy load FriendsView để tối ưu performance
@@ -40,11 +41,29 @@ interface MessageAreaProps {
 
 // Component hiển thị chat hoặc Friends view
 export default function MessageArea({ activeItem, onActiveItemChange }: MessageAreaProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  
   // Ref để scroll đến cuối danh sách tin nhắn
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Kiểm tra xem có phải đang chat với user không (bắt đầu bằng "user-")
-  const isUserChat = activeItem?.startsWith("user-");
+  // Lấy activeItem từ URL pathname - memoized để tránh re-compute
+  const currentActiveItem = useMemo(() => {
+    if (activeItem) return activeItem;
+    if (!pathname) return "friends";
+    
+    if (pathname === "/channels/me") return "friends";
+    
+    const match = pathname.match(/^\/channels\/me\/([^/]+)$/);
+    if (match && match[1]) {
+      return `user-${match[1]}`;
+    }
+    
+    return "friends";
+  }, [activeItem, pathname]);
+  
+  // Kiểm tra xem có phải đang chat với user không - memoized
+  const isUserChat = useMemo(() => currentActiveItem?.startsWith("user-"), [currentActiveItem]);
 
   // State quản lý messages
   const [messages, setMessages] = useState<Array<{
@@ -76,6 +95,9 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   // State để lưu thông tin user hiện tại đang chat
   const [currentChatUser, setCurrentChatUser] = useState<ChatUser | null>(null);
   
+  // State để lưu friendship status từ DB (để disable input khi bị block)
+  const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
+  
   // Ref để lưu currentChatUser cho socket handler
   const currentChatUserRef = useRef(currentChatUser);
   
@@ -85,29 +107,20 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   }, [currentChatUser]);
 
   // Sử dụng FriendsContext để quản lý friends state tập trung
-  const { friends: friendsList, fetchFriends } = useFriendsContext();
+  const { friends: friendsList, pendingRequests, fetchFriends, fetchPendingRequests } = useFriendsContext();
   
   // Sử dụng toast để hiển thị thông báo
-  const { showError, showSuccess } = useToast();
+  const { showError } = useToast();
   
   // Sử dụng useUnreadMessages để reset unread count khi mở chat
   const { resetUnread, setCurrentChatUserId } = useUnreadMessages();
 
-  // Lấy username và userId từ localStorage
-  const [currentUsername, setCurrentUsername] = useState("You");
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Sử dụng useCurrentUser hook để lấy thông tin user hiện tại
+  const currentUserData = useCurrentUser();
+  const currentUsername = currentUserData ? getDisplayName(currentUserData) : "You";
+  const currentUserAvatar = currentUserData?.avatar || null;
+  const currentUserId = currentUserData?.id || getUserIdFromStorage();
   const socketRef = useRef<Socket | null>(null);
-
-  /**
-   * Khởi tạo: Lấy thông tin user từ localStorage
-   */
-  useEffect(() => {
-    const user = getUserFromStorage();
-    if (user) {
-      setCurrentUsername(user.username || "You");
-      setCurrentUserId(user.id || user._id || null);
-    }
-  }, []);
 
   /**
    * Kết nối Socket.io cho realtime messaging
@@ -129,11 +142,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
       socket.emit("user:connect", currentUserId);
     });
 
-    /**
-     * Handler nhận tin nhắn mới từ server
-     * - Chỉ thêm tin nhắn nếu đang chat với người gửi
-     * - Tránh duplicate bằng cách kiểm tra content và timestamp
-     */
+    // Handler nhận tin nhắn từ socket: chỉ thêm nếu đang chat với người gửi, kiểm tra duplicate bằng content + timestamp (2s)
     const handleMessageReceive = (data: any) => {
       const currentChatUser = currentChatUserRef.current;
       
@@ -142,11 +151,10 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         return;
       }
 
-      // Thêm tin nhắn vào danh sách
       setMessages((prev) => {
         const createdAt = data.createdAt || new Date();
         
-        // Kiểm tra xem tin nhắn đã có chưa (tránh duplicate)
+        // Kiểm tra duplicate (content giống và timestamp chênh lệch < 2s)
         const exists = prev.some(
           (msg) => {
             if (!msg.createdAt) return false;
@@ -162,8 +170,8 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         const newMessage = {
           id: prev.length > 0 ? Math.max(...prev.map(m => m.id)) + 1 : 1,
           author: currentChatUser.name,
-          avatar: currentChatUser.name.charAt(0).toUpperCase(),
-          timestamp: new Date(createdAt).toLocaleString("vi-VN", {
+          avatar: formatAvatarUrl(currentChatUser.avatar) || getInitials(currentChatUser.name),
+          timestamp: new Date(createdAt).toLocaleString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
             day: "numeric",
@@ -172,6 +180,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
           }),
           content: data.content,
           createdAt: createdAt,
+          senderId: data.senderId || currentChatUser.id,
         };
 
         return [...prev, newMessage];
@@ -205,22 +214,49 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
    * Lấy thông tin user từ activeItem (user-{friendId})
    * - Parse friendId từ activeItem
    * - Tìm friend trong friendsList và set currentChatUser
+   * - Nếu không tìm thấy trong friendsList, fetch từ API (có thể là user từ conversations)
    * - Reset unread count khi mở chat với user
    * - Thông báo cho context biết user nào đang được chat
    */
   useEffect(() => {
-    if (isUserChat && activeItem) {
-      const friendId = activeItem.replace("user-", "");
+    if (isUserChat && currentActiveItem) {
+      const friendId = currentActiveItem.replace("user-", "");
+      
+      // Tránh reset state sau khi user vừa gửi friend request (nếu không button sẽ quay về "Add Friend")
+      const currentUserId = getUserIdFromStorage();
+      if (currentChatUser && 
+          currentChatUser.id === friendId && 
+          currentChatUser.friendshipStatus === "pending" && 
+          currentChatUser.requestedBy === currentUserId) {
+        return;
+      }
+      
       // So sánh string để đảm bảo chính xác
       const friend = friendsList.find(f => String(f.friend.id) === String(friendId));
       
       if (friend) {
+        const displayName = getDisplayName(friend.friend);
+        const avatarUrl = formatAvatarUrl(friend.friend.avatar);
+        // Xác định ai là người block (requestedBy lưu ID người block khi status = "blocked")
+        const blockedBy = friend.status === "blocked" && friend.requestedBy 
+          ? friend.requestedBy.id 
+          : null;
+        // Xác định ai là người gửi request để hiển thị đúng button (mình gửi = "Friend Request Sent", người khác gửi = "Accept/Decline")
+        const requestedBy = friend.status === "pending" && friend.requestedBy
+          ? friend.requestedBy.id
+          : null;
+        
         setCurrentChatUser({
           id: friend.friend.id,
-          name: friend.friend.username,
-          avatar: friend.friend.username.charAt(0).toUpperCase(),
+          name: displayName,
+          avatar: avatarUrl || "", // Chỉ lưu URL, không lưu initial
           tag: friend.friend.email.split("@")[0] || friend.friend.id.slice(-4),
           email: friend.friend.email,
+          username: friend.friend.username, // Lưu username
+          friendshipStatus: friend.status, // Lưu friendship status
+          blockedBy: blockedBy, // Lưu ID người block
+          requestedBy: requestedBy, // Lưu ID người gửi request
+          friendshipId: friend.friendshipId, // Lưu friendship ID để accept/reject
         });
         // Reset unread count khi mở chat với user này
         resetUnread(friend.friend.id);
@@ -228,49 +264,124 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         setCurrentChatUserId(friend.friend.id);
         
         // Đánh dấu tất cả tin nhắn từ user này là đã đọc (async, không block UI)
+        markMessagesAsRead(friend.friend.id).catch(() => {
+          // Silent fail
+        });
+      } else {
+        // Nếu không tìm thấy trong friendsList, kiểm tra xem có đang ở trạng thái "pending" do chính user gửi không
+        // Nếu có, không fetch lại từ API để tránh reset state
+        const currentUserId = getUserIdFromStorage();
+        if (currentChatUser && 
+            currentChatUser.id === friendId && 
+            currentChatUser.friendshipStatus === "pending" && 
+            currentChatUser.requestedBy === currentUserId) {
+          // Giữ nguyên state, không fetch lại
+          return;
+        }
+        
+        // Nếu không tìm thấy trong friendsList, kiểm tra pending requests trước
         (async () => {
           try {
             const userId = getUserIdFromStorage();
-            if (!userId) return;
-
-            const response = await fetch(
-              `/api/messengers?senderId=${friend.friend.id}&receiverId=${userId}`
-            );
-            if (!response.ok) return;
+            let friendshipStatus: string | undefined = undefined;
+            let requestedBy: string | null = null;
+            let blockedBy: string | null = null;
+            let friendshipId: string | undefined = undefined;
             
-            const data = await response.json();
-            const unreadMessages = data.messages?.filter((msg: any) => !msg.isRead) || [];
-            if (unreadMessages.length === 0) return;
+            // Kiểm tra pending requests nếu có userId - fetch từ API để đảm bảo có dữ liệu mới nhất
+            if (userId) {
+              try {
+                const pendingResponse = await fetch(`/api/friends?userId=${userId}&status=pending`, {
+                  cache: 'no-store',
+                });
+                if (pendingResponse.ok) {
+                  const pendingData = await pendingResponse.json();
+                  const userIdStr = String(userId);
+                  
+                  // Tìm incoming request (người khác gửi cho mình, requestedBy !== currentUserId)
+                  const pendingFriendship = pendingData.friends?.find((f: any) => {
+                    const fId = f.friend?.id || f.friend?._id || f.friend;
+                    if (String(fId) !== String(friendId)) return false;
+                    
+                    const requestedById = String(
+                      f.requestedBy?._id || 
+                      f.requestedBy?.id || 
+                      f.requestedBy || 
+                      ""
+                    );
+                    return requestedById && requestedById !== userIdStr;
+                  });
+                  
+                  if (pendingFriendship) {
+                    friendshipStatus = "pending";
+                    const requestedById = pendingFriendship.requestedBy?.id || 
+                                         pendingFriendship.requestedBy?._id || 
+                                         pendingFriendship.requestedBy || 
+                                         null;
+                    requestedBy = requestedById ? String(requestedById) : null;
+                    friendshipId = pendingFriendship.friendshipId || 
+                                   pendingFriendship._id?.toString() || 
+                                   undefined;
+                  }
+                }
+              } catch (error) {
+                // Silent fail, tiếp tục fetch user
+              }
+            }
             
-            const messageIds = unreadMessages.map((msg: any) => msg._id || msg.id);
-            await fetch("/api/messengers/read", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ messageIds, userId }),
-            });
+            // Fetch user info từ API
+            const response = await fetch(`/api/users/${friendId}`);
+            if (response.ok) {
+              const data = await response.json();
+              const user = data.user;
+              const displayName = getDisplayName(user);
+              const avatarUrl = formatAvatarUrl(user.avatar);
+              
+              setCurrentChatUser({
+                id: user.id,
+                name: displayName,
+                avatar: avatarUrl || "",
+                tag: user.email.split("@")[0] || user.id.slice(-4),
+                email: user.email,
+                username: user.username, // Lưu username
+                friendshipStatus: friendshipStatus, // Sử dụng status từ pending requests nếu có
+                requestedBy: requestedBy,
+                blockedBy: blockedBy,
+                friendshipId: friendshipId, // Lưu friendship ID
+              });
+              
+              // Reset unread count
+              resetUnread(user.id);
+              setCurrentChatUserId(user.id);
+              
+              // Đánh dấu tin nhắn đã đọc
+              markMessagesAsRead(user.id).catch(() => {
+                // Silent fail
+              });
+            } else {
+              // Nếu không tìm thấy user, quay về Friends view
+              setCurrentChatUser(null);
+              setCurrentChatUserId(null);
+              router.push("/channels/me");
+            }
           } catch (error) {
-            // Silent fail
+            console.error("Error fetching user:", error);
+            setCurrentChatUser(null);
+            setCurrentChatUserId(null);
+            router.push("/channels/me");
           }
         })();
-      } else {
-        // Nếu không tìm thấy friend trong danh sách, quay về Friends view
-        setCurrentChatUser(null);
-        setCurrentChatUserId(null);
-        onActiveItemChange?.("friends");
       }
     } else {
       setCurrentChatUser(null);
       setCurrentChatUserId(null);
     }
-  }, [activeItem, isUserChat, friendsList, resetUnread, setCurrentChatUserId, onActiveItemChange]);
+  }, [currentActiveItem, isUserChat, friendsList, pendingRequests, resetUnread, setCurrentChatUserId, router]);
 
   const currentUser = currentChatUser;
 
   /**
-   * Fetch messages từ API
-   * - Lấy tất cả tin nhắn giữa currentUser và currentChatUser
-   * - Format lại để hiển thị trong UI
-   * - Memoized với useCallback
+   * Lấy danh sách tin nhắn từ API
    */
   const fetchMessages = useCallback(async () => {
     if (!currentUser) return;
@@ -287,11 +398,10 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         `/api/messengers?senderId=${userId}&receiverId=${currentUser.id}`
       );
       
-      // Nếu không còn là bạn bè (403), đóng chat và quay về Friends view
+      // Không quay về Friends view khi gặp 403, vẫn cho phép xem tin nhắn cũ
       if (response.status === 403) {
+        // Vẫn hiển thị tin nhắn rỗng, không quay về Friends view
         setMessages([]);
-        onActiveItemChange?.("friends");
-        showError("Bạn không còn là bạn bè với người dùng này");
         setIsLoadingMessages(false);
         return;
       }
@@ -299,63 +409,20 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
       if (response.ok) {
         const data = await response.json();
         const formattedMessages: Message[] = data.messages.map((msg: any, index: number) => {
-            // Xử lý senderId - có thể là ObjectId string hoặc object đã populate
-            let senderIdStr: string;
-            if (typeof msg.senderId === 'object' && msg.senderId !== null) {
-              // Nếu đã được populate, lấy _id hoặc id
-              senderIdStr = msg.senderId._id?.toString() || msg.senderId.id?.toString() || msg.senderId.toString();
-            } else {
-              // Nếu là string hoặc ObjectId
-              senderIdStr = msg.senderId?.toString() || String(msg.senderId);
-            }
-
-            // So sánh với userId hiện tại
-            const isFromCurrentUser = senderIdStr === userId;
-            
-            // Lấy tên người gửi
-            let senderName: string;
-            if (isFromCurrentUser) {
-              // Tin nhắn từ user hiện tại
-              senderName = currentUsername;
-            } else {
-              // Tin nhắn từ người khác - lấy từ populated object hoặc currentUser
-              if (typeof msg.senderId === 'object' && msg.senderId?.username) {
-                senderName = msg.senderId.username;
-              } else {
-                senderName = currentUser.name;
-              }
-            }
-          
-          const senderAvatar = senderName.charAt(0).toUpperCase();
-          
-          return {
-            id: index + 1,
-            messageId: msg._id?.toString() || msg.id?.toString(),
-            author: senderName,
-            avatar: senderAvatar,
-            timestamp: new Date(msg.createdAt).toLocaleString("vi-VN", {
-              hour: "2-digit",
-              minute: "2-digit",
-              day: "numeric",
-              month: "numeric",
-              year: "numeric",
-            }),
-            content: msg.content,
-            createdAt: msg.createdAt,
-            senderId: senderIdStr,
-          };
+          return formatMessage(
+            msg,
+            index,
+            userId,
+            currentUsername,
+            currentUserAvatar,
+            currentUser
+          );
         });
         
         setMessages(formattedMessages);
       } else {
-        // Nếu response không ok, kiểm tra status code
-        if (response.status === 403) {
-          setMessages([]);
-          onActiveItemChange?.("friends");
-          showError("Bạn không còn là bạn bè với người dùng này");
-        } else {
-          setMessages([]);
-        }
+        // Nếu response không ok, chỉ set messages rỗng, không quay về Friends view
+        setMessages([]);
       }
     } catch (error) {
       setMessages([]);
@@ -368,7 +435,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   // Reset isScrollReady khi chuyển user
   useEffect(() => {
     setIsScrollReady(false);
-  }, [activeItem]);
+  }, [currentActiveItem]);
 
   // Set scroll position ở cuối ngay từ đầu - KHÔNG có hiệu ứng scroll
   useLayoutEffect(() => {
@@ -378,7 +445,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
       container.scrollTop = container.scrollHeight;
       setIsScrollReady(true);
     }
-  }, [activeItem, isUserChat, messages.length]);
+  }, [currentActiveItem, isUserChat, messages.length]);
   
   // Đảm bảo scroll ở cuối sau khi DOM render xong (backup)
   useEffect(() => {
@@ -393,7 +460,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         }
       });
     }
-  }, [activeItem, isUserChat, messages.length]);
+  }, [currentActiveItem, isUserChat, messages.length]);
 
   // Reset messages về ban đầu khi chuyển user khác
   useEffect(() => {
@@ -408,27 +475,24 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
       setDisplayedCount(20);
       setIsScrollReady(false);
     }
-  }, [activeItem, isUserChat, currentUser, fetchMessages]);
+  }, [currentActiveItem, isUserChat, currentUser, fetchMessages]);
   
   /**
-   * Handler scroll để lazy load tin nhắn cũ
-   * - Khi scroll gần đầu (< 300px), load thêm 20 tin nhắn
-   * - Giữ vị trí scroll sau khi load để UX mượt mà
-   * - Memoized với useCallback
+   * Xử lý scroll để tải thêm tin nhắn cũ (lazy load)
    */
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
     if (!container || !isUserChat || messages.length === 0) return;
     
-    // Nếu scroll gần đầu (trong vòng 300px từ đầu) và chưa load hết
+    // Load thêm tin nhắn cũ khi scroll gần đầu (300px threshold)
     if (container.scrollTop < 300 && displayedCount < messages.length) {
+      // Lưu vị trí scroll trước khi load để giữ vị trí sau khi DOM update
       const oldScrollHeight = container.scrollHeight;
       const oldScrollTop = container.scrollTop;
       
-      // Load thêm 20 tin nhắn cũ
       setDisplayedCount(prev => {
         const newCount = Math.min(prev + 20, messages.length);
-        // Giữ vị trí scroll sau khi load thêm
+        // Tính lại scroll position sau khi thêm tin nhắn (scrollDiff = độ tăng scrollHeight)
         requestAnimationFrame(() => {
           if (container) {
             const newScrollHeight = container.scrollHeight;
@@ -442,11 +506,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
   }, [isUserChat, messages.length, displayedCount]);
 
   /**
-   * Handler gửi tin nhắn
-   * - Gửi qua Socket.io để realtime
-   * - Lưu vào database qua API
-   * - Tránh duplicate bằng cách kiểm tra timestamp
-   * - Memoized với useCallback
+   * Xử lý gửi tin nhắn
    */
   const handleSendMessage = useCallback(async () => {
     if (!messageInput.trim() || !currentUser || !currentUserId) return;
@@ -483,10 +543,11 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         const savedMessage = data.data;
         
         // Format tin nhắn đã lưu để thêm vào danh sách
+        const userAvatar = formatAvatarUrl(currentUserAvatar) || getInitials(currentUsername);
         const newMessage = {
           id: messages.length > 0 ? Math.max(...messages.map(m => m.id)) + 1 : 1,
           author: currentUsername,
-          avatar: currentUsername.charAt(0).toUpperCase(),
+          avatar: userAvatar,
           timestamp: new Date(savedMessage.createdAt).toLocaleString("vi-VN", {
             hour: "2-digit",
             minute: "2-digit",
@@ -496,11 +557,11 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
           }),
           content: messageContent,
           createdAt: savedMessage.createdAt,
+          senderId: currentUserId || "",
         };
 
-        // Thêm tin nhắn vào danh sách (nếu chưa có từ socket)
+        // Tránh duplicate: tin nhắn có thể đến từ socket (nhanh) và API (chậm), kiểm tra bằng content + timestamp (2s tolerance)
         setMessages((prev) => {
-          // Kiểm tra xem tin nhắn đã có chưa (tránh duplicate với socket)
           const savedCreatedAt = savedMessage.createdAt || new Date();
           const exists = prev.some(
             (msg) => {
@@ -525,20 +586,17 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
         }, 100);
       } else {
         const errorData = await response.json();
-        showError(errorData.message || "Có lỗi xảy ra khi gửi tin nhắn");
+        showError(errorData.message || "An error occurred while sending message");
         setMessageInput(messageContent);
       }
     } catch (error) {
-      showError("Có lỗi xảy ra khi gửi tin nhắn");
+      showError("An error occurred while sending message");
       setMessageInput(messageContent);
     }
   }, [messageInput, currentUser, currentUserId, currentUsername, messages.length, socketRef, showError]);
 
   /**
-   * Handler khi nhấn Enter để gửi tin nhắn
-   * - Enter: gửi tin nhắn
-   * - Shift + Enter: xuống dòng
-   * - Memoized với useCallback
+   * Xử lý khi nhấn phím để gửi tin nhắn
    */
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -547,9 +605,40 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
     }
   }, [handleSendMessage]);
 
+  /**
+   * Lấy trạng thái kết bạn từ API
+   */
+  const fetchFriendshipStatus = useCallback(async () => {
+    if (!currentUser || !currentUserId) {
+      setFriendshipStatus(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/friends/status?userId1=${currentUserId}&userId2=${currentUser.id}`, {
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFriendshipStatus(data.status);
+      }
+    } catch (error) {
+      console.error("Error fetching friendship status:", error);
+    }
+  }, [currentUser, currentUserId]);
+
+  // Fetch friendship status từ DB khi currentUser thay đổi
+  useEffect(() => {
+    fetchFriendshipStatus();
+  }, [fetchFriendshipStatus]);
+
+  // Tính toán isBlocked - memoized
+  const isBlocked = useMemo(() => friendshipStatus === "blocked", [friendshipStatus]);
+
   // Nếu đang chat với user, hiển thị giao diện chat
   if (isUserChat && currentUser) {
     const user = currentUser;
+    
     return (
       <div className="h-full flex flex-col bg-linear-to-br from-[#FFFFFF] via-[#F7F8F9] to-[#F2F3F5]">
         {/* Header - cố định ở trên */}
@@ -558,49 +647,55 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
             userName={user.name} 
             userAvatar={user.avatar}
             friendId={user.id}
+            friendshipStatus={user.friendshipStatus}
+            requestedBy={user.requestedBy}
+            blockedBy={user.blockedBy}
             onUnfriend={() => {
               // Quay về Friends view sau khi xóa bạn
-              onActiveItemChange?.("friends");
+              router.push("/channels/me");
             }}
             onBlock={() => {
-              // Quay về Friends view sau khi chặn
-              onActiveItemChange?.("friends");
+              // Không quay về Friends view, chỉ cập nhật UI
             }}
           />
         </div>
 
         {/* Message List - scrollable, chiếm phần còn lại */}
         <div className="flex-1 min-h-0 overflow-hidden relative">
-          {isLoadingMessages ? (
-            <div className="h-full flex items-center justify-center">
-              <LoadingSpinner size="lg" text="Đang tải tin nhắn..." />
-            </div>
-          ) : (
-            <MessageList
-              messages={messages}
-              displayedCount={displayedCount}
-              onScroll={handleScroll}
-              containerRef={messagesContainerRef}
-              userProfileHeader={
-                <UserProfileHeader
-                  userName={user.name}
-                  userEmail={user.email}
-                  userTag={user.tag}
-                  userAvatar={user.avatar && user.avatar.startsWith('http') ? user.avatar : undefined}
-                  friendId={user.id}
-                  onUnfriend={() => {
-                    // Quay về Friends view sau khi xóa bạn
-                    onActiveItemChange?.("friends");
-                  }}
-                  onBlock={() => {
-                    // Quay về Friends view sau khi chặn
-                    onActiveItemChange?.("friends");
-                  }}
-                />
-              }
-              currentUserId={currentUserId}
-            />
-          )}
+          <MessageList
+            messages={messages}
+            displayedCount={displayedCount}
+            onScroll={handleScroll}
+            containerRef={messagesContainerRef}
+            userProfileHeader={
+              <UserProfileHeader
+                userName={user.name} 
+                userEmail={user.email}
+                userTag={user.tag}
+                userUsername={user.username}
+                userAvatar={user.avatar || undefined}
+                friendId={user.id}
+                onUnfriend={async () => {
+                  // Fetch lại friends list sau khi unfriend
+                  await fetchFriends();
+                  // Refresh friendship status
+                  await fetchFriendshipStatus();
+                }}
+                onBlock={async () => {
+                  // Fetch lại friends list sau khi block
+                  await fetchFriends();
+                  // Refresh friendship status
+                  await fetchFriendshipStatus();
+                }}
+                onAddFriend={async () => {
+                  // Fetch lại friends và pending requests để cập nhật UI
+                  await Promise.all([fetchFriends(), fetchPendingRequests()]);
+                  // Refresh friendship status
+                  await fetchFriendshipStatus();
+                }}
+              />
+            }
+          />
         </div>
 
         {/* Input - cố định ở dưới */}
@@ -610,6 +705,7 @@ export default function MessageArea({ activeItem, onActiveItemChange }: MessageA
             value={messageInput}
             onChange={setMessageInput}
             onKeyPress={handleKeyPress}
+            disabled={isBlocked}
           />
         </div>
       </div>

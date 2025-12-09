@@ -14,17 +14,15 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import ServerList from "./ServerList";
 import ChannelSidebar from "./ChannelSidebar";
 import MessageArea from "../chat/MessageArea";
 import RightSidebar from "./RightSidebar";
 import TopBar from "./TopBar";
-import Icon from "../../common/Icon";
-import { UnreadMessagesProvider } from "@/app/contexts/UnreadMessagesContext";
-import { UserStatusProvider } from "@/app/contexts/UserStatusContext";
-import { FriendsProvider } from "@/app/contexts/FriendsContext";
+// Providers được đặt ở level cao hơn trong (discord)/layout.tsx
 import { useUserStatus } from "@/app/hooks/useUserStatus";
 
 // Lazy load SettingsModal để tối ưu performance
@@ -37,18 +35,34 @@ function DiscordLayoutContent() {
   // Theo dõi trạng thái của user hiện tại
   useUserStatus();
 
+  const pathname = usePathname();
+  const router = useRouter();
+
   // State quản lý modal settings
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  // State quản lý item đang được chọn (friends, nitro, shop, user-1, user-2...)
-  const [activeItem, setActiveItem] = useState<string>("friends");
+  
+  // Parse activeItem từ URL: /channels/me -> "friends", /channels/me/[userId] -> "user-{userId}"
+  const getActiveItemFromPath = useCallback(() => {
+    if (!pathname) return "friends";
+    
+    if (pathname === "/channels/me") return "friends";
+    
+    const match = pathname.match(/^\/channels\/me\/([^/]+)$/);
+    if (match && match[1]) {
+      return `user-${match[1]}`;
+    }
+    
+    return "friends";
+  }, [pathname]);
+  
+  const activeItem = getActiveItemFromPath();
   
   // State quản lý responsive: mobile menu và sidebars
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showChannelSidebar, setShowChannelSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Detect mobile screen size
+  // Detect mobile (< 768px) và tự động ẩn sidebars trên mobile
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
@@ -76,13 +90,23 @@ function DiscordLayoutContent() {
     setIsSettingsOpen(false);
   }, []);
 
+  // Navigate đến URL tương ứng và đóng sidebar trên mobile khi chọn chat
   const handleActiveItemChange = useCallback((item: string) => {
-    setActiveItem(item);
-    // Trên mobile, đóng channel sidebar khi chọn chat
+    if (item === "friends") {
+      router.push("/channels/me");
+    } else if (item === "nitro") {
+      router.push("/nitro");
+    } else if (item === "shop") {
+      router.push("/store");
+    } else if (item.startsWith("user-")) {
+      const userId = item.replace("user-", "");
+      router.push(`/channels/me/${userId}`);
+    }
+    
     if (isMobile && item.startsWith("user-")) {
       setShowChannelSidebar(false);
     }
-  }, [isMobile]);
+  }, [isMobile, router]);
 
   const toggleChannelSidebar = useCallback(() => {
     setShowChannelSidebar((prev) => !prev);
@@ -92,36 +116,45 @@ function DiscordLayoutContent() {
     setShowRightSidebar((prev) => !prev);
   }, []);
 
-  // Memoize title để tránh re-render TopBar không cần thiết
-  const displayTitle = useMemo(() => {
-    if (activeItem.startsWith("user-")) {
-      return "Tin nhắn trực tiếp";
-    }
-    const titleMap: { [key: string]: string } = {
-      friends: "Bạn bè",
-      nitro: "Nitro",
-      shop: "Shop",
-    };
-    return titleMap[activeItem] || activeItem;
-  }, [activeItem]);
+  // Memoize components để tránh re-render không cần thiết (chỉ re-render khi dependencies thay đổi)
+  const memoizedServerList = useMemo(() => <ServerList />, []);
+  
+  const memoizedTopBar = useMemo(() => (
+    <TopBar 
+      title={activeItem} 
+      onToggleChannelSidebar={isMobile ? toggleChannelSidebar : undefined}
+      onToggleRightSidebar={isMobile ? toggleRightSidebar : undefined}
+    />
+  ), [activeItem, isMobile, toggleChannelSidebar, toggleRightSidebar]);
+  
+  const memoizedChannelSidebar = useMemo(() => (
+    <ChannelSidebar
+      onOpenSettings={handleOpenSettings}
+      onActiveItemChange={handleActiveItemChange}
+      activeItem={activeItem}
+      onClose={isMobile ? () => setShowChannelSidebar(false) : undefined}
+    />
+  ), [activeItem, handleOpenSettings, handleActiveItemChange, isMobile]);
+  
+  const memoizedRightSidebar = useMemo(() => (
+    <RightSidebar 
+      activeItem={activeItem}
+      onClose={isMobile ? () => setShowRightSidebar(false) : undefined}
+    />
+  ), [activeItem, isMobile]);
 
   return (
-    <FriendsProvider>
-      <UnreadMessagesProvider>
+    <>
       {/* Container chính - full screen với gradient background */}
       <div className="flex h-screen bg-linear-to-br from-[#FFFFFF] via-[#F7F8F9] to-[#F2F3F5] text-[#060607] overflow-hidden flex-col">
         {/* Top bar - thanh bar cố định ở trên */}
-        <TopBar 
-          title={activeItem} 
-          onToggleChannelSidebar={isMobile ? toggleChannelSidebar : undefined}
-          onToggleRightSidebar={isMobile ? toggleRightSidebar : undefined}
-        />
+        {memoizedTopBar}
 
         {/* Vùng nội dung chính - 3 cột */}
         <div className="flex flex-1 min-h-0 overflow-hidden relative">
           {/* Cột 1: Danh sách server - ẩn trên mobile */}
           <div className={`${isMobile ? "hidden" : "block"} shrink-0`}>
-            <ServerList />
+            {memoizedServerList}
           </div>
 
           {/* Cột 2: Sidebar channels + vùng tin nhắn */}
@@ -134,12 +167,7 @@ function DiscordLayoutContent() {
                   : "-translate-x-full md:translate-x-0"
               } absolute md:relative z-30 md:z-auto h-full transition-transform duration-300 ease-in-out`}
             >
-              <ChannelSidebar
-                onOpenSettings={handleOpenSettings}
-                onActiveItemChange={handleActiveItemChange}
-                activeItem={activeItem}
-                onClose={isMobile ? () => setShowChannelSidebar(false) : undefined}
-              />
+              {memoizedChannelSidebar}
             </div>
             
             {/* Overlay trên mobile khi sidebar mở */}
@@ -167,10 +195,7 @@ function DiscordLayoutContent() {
                 : "translate-x-full"
             } absolute md:relative right-0 z-30 md:z-auto h-full transition-transform duration-300 ease-in-out`}
           >
-            <RightSidebar 
-              activeItem={activeItem}
-              onClose={isMobile ? () => setShowRightSidebar(false) : undefined}
-            />
+            {memoizedRightSidebar}
           </div>
           
           {/* Overlay trên mobile khi right sidebar mở */}
@@ -185,17 +210,12 @@ function DiscordLayoutContent() {
 
       {/* Modal settings - hiển thị khi isSettingsOpen = true */}
       {isSettingsOpen && <SettingsModal onClose={handleCloseSettings} />}
-      </UnreadMessagesProvider>
-    </FriendsProvider>
+    </>
   );
 }
 
-// Layout chính của Discord với providers
+// Layout chính của Discord (providers được đặt ở level cao hơn)
 export default function DiscordLayout() {
-  return (
-    <UserStatusProvider>
-      <DiscordLayoutContent />
-    </UserStatusProvider>
-  );
+  return <DiscordLayoutContent />;
 }
 

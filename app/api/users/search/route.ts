@@ -14,6 +14,7 @@ import dbConnect from "@/app/lib/database/mongodb";
 import User from "@/app/models/User";
 import Friendship from "@/app/models/Friendship";
 import mongoose from "mongoose";
+import { normalizeObjectId } from "@/app/lib/utils/serverApiUtils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,7 +39,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const currentUserIdObj = new mongoose.Types.ObjectId(currentUserId);
+    const currentUserIdObj = normalizeObjectId(currentUserId);
+    if (!currentUserIdObj) {
+      return NextResponse.json(
+        { message: "Invalid currentUserId format." },
+        { status: 400 }
+      );
+    }
 
     // Tìm kiếm user theo username hoặc email (không phân biệt hoa thường)
     const searchRegex = new RegExp(query.trim(), "i");
@@ -50,7 +57,7 @@ export async function GET(request: NextRequest) {
       // Loại trừ user hiện tại
       _id: { $ne: currentUserIdObj },
     })
-      .select("username email _id")
+      .select("username email _id displayName avatar")
       .limit(10);
 
     // Lấy danh sách user IDs đã bị chặn hoặc đã chặn currentUser
@@ -108,6 +115,8 @@ export async function GET(request: NextRequest) {
         id: userIdStr,
         username: user.username,
         email: user.email,
+        displayName: (user as any).displayName || null,
+        avatar: (user as any).avatar || null,
         friendshipStatus: friendship?.status || null,
         requestedBy: friendship?.requestedBy || null,
       };

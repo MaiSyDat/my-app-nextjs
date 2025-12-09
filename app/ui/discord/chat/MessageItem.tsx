@@ -26,8 +26,6 @@ interface MessageItemProps {
   content: string;
   type?: string;
   icon?: string;
-  senderId?: string;
-  currentUserId?: string | null;
 }
 
 // Component hiển thị 1 tin nhắn - Memoized để tránh re-render không cần thiết
@@ -39,9 +37,7 @@ const MessageItem = memo(function MessageItem({
   timestamp, 
   content, 
   type,
-  icon,
-  senderId,
-  currentUserId
+  icon
 }: MessageItemProps) {
   // Nếu là tin nhắn system (ví dụ: cuộc gọi)
   if (type === "system") {
@@ -62,10 +58,10 @@ const MessageItem = memo(function MessageItem({
     );
   }
 
-  // Parse content để tìm URLs
+  // Parse content để tìm URLs và convert thành links
   const contentSegments = parseTextWithUrls(content);
   
-  // Tìm URL đầu tiên để hiển thị preview (chỉ hiển thị 1 preview cho mỗi tin nhắn)
+  // Tìm URL đầu tiên để hiển thị link preview (chỉ hiển thị 1 preview cho mỗi tin nhắn)
   const firstUrl = contentSegments.find(seg => seg.isUrl && seg.url)?.url;
 
   // Tin nhắn thông thường
@@ -73,7 +69,11 @@ const MessageItem = memo(function MessageItem({
     <div 
       className="flex gap-3 my-2 group hover:bg-[#F7F8F9]/50 rounded px-2 py-1 -mx-2 relative"
     >
-      <Avatar initial={avatar} size="lg" />
+      <Avatar 
+        initial={avatar && !avatar.startsWith('http') && !avatar.startsWith('/') ? avatar : (author.charAt(0).toUpperCase())} 
+        avatarUrl={avatar && (avatar.startsWith('http') || avatar.startsWith('/')) ? avatar : undefined}
+        size="lg" 
+      />
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1">
           <span className="font-semibold text-[#060607] text-sm">

@@ -12,6 +12,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
 import StatusIndicator from "../../common/StatusIndicator";
@@ -19,7 +20,8 @@ import { useFriendsContext } from "@/app/contexts/FriendsContext";
 import { useUnreadMessages } from "@/app/contexts/UnreadMessagesContext";
 import { useUserStatusContext } from "@/app/contexts/UserStatusContext";
 import { useUserStatus } from "@/app/hooks/useUserStatus";
-import { getUserFromStorage } from "@/app/lib/utils";
+import { useCurrentUser } from "@/app/hooks/useCurrentUser";
+import { getDisplayName, getInitials } from "@/app/lib/utils";
 
 // Props
 interface ChannelSidebarProps {
@@ -35,17 +37,41 @@ export default function ChannelSidebar({
   activeItem: propActiveItem,
   onClose,
 }: ChannelSidebarProps) {
-  const [localActiveItem, setLocalActiveItem] = useState<
-    "friends" | "nitro" | "shop" | string
-  >("friends");
+  const pathname = usePathname();
+  const router = useRouter();
   
-  const activeItem = propActiveItem || localActiveItem;
+  // Lấy activeItem từ URL pathname
+  const getActiveItemFromPath = () => {
+    if (!pathname) return "friends";
+    
+    if (pathname === "/channels/me") return "friends";
+    if (pathname === "/nitro") return "nitro";
+    if (pathname === "/store") return "shop";
+    
+    const match = pathname.match(/^\/channels\/me\/([^/]+)$/);
+    if (match && match[1]) {
+      return `user-${match[1]}`;
+    }
+    
+    return "friends";
+  };
   
-  const [user, setUser] = useState<{
+  const activeItem = propActiveItem || getActiveItemFromPath();
+  
+  // Sử dụng useCurrentUser hook để lấy thông tin user hiện tại
+  const user = useCurrentUser();
+  
+  // State để lưu danh sách users đã từng nhắn tin
+  const [conversations, setConversations] = useState<Array<{
+    id: string;
     username: string;
     email: string;
-    id: string;
-  } | null>(null);
+    displayName?: string | null;
+    avatar?: string | null;
+    lastMessageAt?: Date | string;
+  }>>([]);
+  
+  const [loadingConversations, setLoadingConversations] = useState(false);
   
   // Sử dụng FriendsContext để quản lý friends state tập trung
   const { friends, loading: loadingFriends } = useFriendsContext();
@@ -59,66 +85,144 @@ export default function ChannelSidebar({
   // Sử dụng useUserStatus để lấy trạng thái của user hiện tại
   const { status: currentUserStatus } = useUserStatus();
 
-  // Convert friends thành directMessages format với unread count và status
-  // Sử dụng useMemo để tránh re-compute không cần thiết
+  // Fetch conversations (users đã từng nhắn tin)
+  useEffect(() => {
+    const fetchConversations = async () => {
+      if (!user?.id) return;
+      
+      setLoadingConversations(true);
+      try {
+        const response = await fetch(`/api/messengers/conversations?userId=${user.id}`, {
+          cache: 'no-store',
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setConversations(data.conversations || []);
+        }
+      } catch (error) {
+        console.error("Error fetching conversations:", error);
+      } finally {
+        setLoadingConversations(false);
+      }
+    };
+    
+    if (user?.id) {
+      fetchConversations();
+    }
+  }, [user?.id]);
+
+  // Merge friends và conversations thành directMessages (ưu tiên friends vì có friendship status), dùng useMemo để tối ưu
   const directMessages = useMemo(() => {
-    return friends.map((friendItem) => {
-      const friendId = String(friendItem.friend.id);
+    // Tạo map từ friends (chỉ accepted/blocked/unfriended, không hiển thị pending)
+    const friendsMap = new Map<string, typeof friends[0]>();
+    friends
+      .filter((friendItem) => {
+        return friendItem.status === "accepted" || 
+               friendItem.status === "blocked" || 
+               friendItem.status === "unfriended";
+      })
+      .forEach((friendItem) => {
+        friendsMap.set(String(friendItem.friend.id), friendItem);
+      });
+
+    // Tạo map từ conversations để merge
+    const conversationsMap = new Map<string, typeof conversations[0]>();
+    conversations.forEach((conv) => {
+      conversationsMap.set(conv.id, conv);
+    });
+    const mergedMap = new Map<string, {
+      id: string;
+      username: string;
+      email: string;
+      displayName: string | null;
+      avatar: string | null;
+      status: "online" | "idle" | "offline";
+      friendshipStatus: string | null;
+      unreadCount: number;
+      unreadCountRaw: number;
+      activity: undefined;
+    }>();
+
+    // Thêm từ friends trước (có đầy đủ thông tin friendship, unread count tối đa 5)
+    friendsMap.forEach((friendItem, friendId) => {
       const unreadCount = unreadCounts[friendId] || 0;
       const status = getUserStatus(friendId);
-      return {
+      mergedMap.set(friendId, {
         id: friendItem.friend.id,
         username: friendItem.friend.username,
         email: friendItem.friend.email,
-        status: status,
+        displayName: friendItem.friend.displayName || null,
+        avatar: friendItem.friend.avatar || null,
+        status: status as "online" | "idle" | "offline",
+        friendshipStatus: friendItem.status,
         unreadCount: unreadCount > 5 ? 5 : unreadCount,
         unreadCountRaw: unreadCount,
         activity: undefined,
-      };
-    });
-  }, [friends, unreadCounts, getUserStatus]);
-
-  useEffect(() => {
-    const user = getUserFromStorage();
-    if (user) {
-      setUser({
-        username: user.username || "",
-        email: user.email || "",
-        id: user.id || user._id || "",
       });
-    }
-  }, []);
+    });
 
-  const getInitials = (username: string) => {
-    if (!username) return "U";
-    return username.charAt(0).toUpperCase();
+    // Thêm từ conversations (những user đã nhắn tin nhưng chưa có trong friends)
+    conversationsMap.forEach((conv, convId) => {
+      if (!mergedMap.has(convId)) {
+        const unreadCount = unreadCounts[convId] || 0;
+        const status = getUserStatus(convId);
+        mergedMap.set(convId, {
+          id: conv.id,
+          username: conv.username,
+          email: conv.email,
+          displayName: conv.displayName || null,
+          avatar: conv.avatar || null,
+          status: status as "online" | "idle" | "offline",
+          friendshipStatus: null, // Không có friendship status
+          unreadCount: unreadCount > 5 ? 5 : unreadCount,
+          unreadCountRaw: unreadCount,
+          activity: undefined,
+        });
+      }
+    });
+
+    // Sort: có friendship status trước, sau đó theo unread count, cuối cùng theo tên
+    return Array.from(mergedMap.values()).sort((a, b) => {
+      if (a.friendshipStatus && !b.friendshipStatus) return -1;
+      if (!a.friendshipStatus && b.friendshipStatus) return 1;
+      if (a.unreadCountRaw !== b.unreadCountRaw) {
+        return b.unreadCountRaw - a.unreadCountRaw;
+      }
+      return (a.displayName || a.username).localeCompare(b.displayName || b.username);
+    });
+  }, [friends, conversations, unreadCounts, getUserStatus]);
+
+  // Fetch conversations khi user data có sẵn
+
+  const getDisplayNameForUser = () => {
+    if (!user) return "Username";
+    return getDisplayName(user);
   };
 
   const getUserTag = () => {
-    if (!user) return "#1234";
-    const id = user.id || user.email || "";
-    const last4 = id.slice(-4).replace(/\D/g, "") || "1234";
-    return `#${last4.padStart(4, "0")}`;
+    if (!user) return "";
+    // Hiển thị username nếu có, nếu không thì hiển thị email prefix
+    return user.username || user.email?.split("@")[0] || "";
   };
 
   const handleItemClick = (id: string) => {
-    setLocalActiveItem(id);
+    // Navigate đến URL tương ứng
+    if (id === "friends") {
+      router.push("/channels/me");
+    } else if (id === "nitro") {
+      router.push("/nitro");
+    } else if (id === "shop") {
+      router.push("/store");
+    } else if (id.startsWith("user-")) {
+      const userId = id.replace("user-", "");
+      router.push(`/channels/me/${userId}`);
+    }
+    
     if (onActiveItemChange) {
       onActiveItemChange(id);
     }
   };
-  
-  useEffect(() => {
-    if (propActiveItem) {
-      setLocalActiveItem(propActiveItem);
-    }
-  }, [propActiveItem]);
-
-  useEffect(() => {
-    if (onActiveItemChange) {
-      onActiveItemChange(activeItem);
-    }
-  }, []);
 
   const NavItem = ({ id, icon, label, badge, isNitro }: any) => (
     <button
@@ -126,7 +230,7 @@ export default function ChannelSidebar({
       className={`group w-full flex items-center gap-2 px-2 py-2.5 rounded-lg mx-2 mb-0.5 transition-all duration-200 relative min-w-0
         ${
           activeItem === id
-            ? "bg-linear-to-r from-[#5865F2] to-[#4752C4] text-white shadow-lg shadow-[#5865F2]/30"
+            ? "bg-[#5865F2] text-white shadow-lg shadow-[#5865F2]/30"
             : "text-[#747F8D] hover:bg-[#E3E5E8] hover:text-[#060607] hover:shadow-md"
         }`}
     >
@@ -199,7 +303,7 @@ export default function ChannelSidebar({
 
         {/* Danh sách Direct Messages */}
         <div className="space-y-px mt-1">
-          {loadingFriends ? (
+          {(loadingFriends || loadingConversations) ? (
             <div className="flex items-center justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-[#5865F2]"></div>
             </div>
@@ -225,7 +329,8 @@ export default function ChannelSidebar({
                   )}
                   <div className="relative shrink-0">
                     <Avatar
-                      initial={getInitial(dmUser.username)}
+                      initial={getInitial(dmUser.displayName || dmUser.username)}
+                      avatarUrl={dmUser.avatar || undefined}
                       size="md"
                       shadow
                       hoverScale
@@ -237,6 +342,14 @@ export default function ChannelSidebar({
                         animate
                       />
                     </div>
+                    {/* Icon chặn nếu bị blocked */}
+                    {dmUser.friendshipStatus === "blocked" && (
+                      <div className="absolute -top-0.5 -right-0.5 bg-red-500 rounded-full p-0.5 flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div
@@ -246,7 +359,7 @@ export default function ChannelSidebar({
                           : "text-[#747F8D] group-hover:text-[#060607]"
                       }`}
                     >
-                      {dmUser.username}
+                      {dmUser.displayName || dmUser.username}
                     </div>
                     {dmUser.activity && (
                       <div className="text-xs text-[#747F8D] truncate group-hover:text-[#4F5660] transition-colors">
@@ -255,7 +368,7 @@ export default function ChannelSidebar({
                     )}
                   </div>
                   {dmUser.unreadCountRaw > 0 && (
-                    <div className="bg-linear-to-r from-[#F23F42] to-[#E03E41] text-white text-[10px] font-bold px-1.5 rounded-full min-w-[20px] h-5 flex items-center justify-center shadow-md shrink-0 animate-pulse">
+                    <div className="bg-linear-to-r from-[#F23F42] to-[#E03E41] text-white text-[10px] font-bold px-1.5 rounded-full min-w-5 h-5 flex items-center justify-center shadow-md shrink-0 animate-pulse">
                       {dmUser.unreadCountRaw > 5 ? "5+" : dmUser.unreadCountRaw}
                     </div>
                   )}
@@ -264,7 +377,7 @@ export default function ChannelSidebar({
             })
           ) : (
             <div className="px-4 py-2 text-xs text-[#747F8D] text-center">
-              Chưa có tin nhắn trực tiếp
+              No direct messages
             </div>
           )}
         </div>
@@ -275,7 +388,8 @@ export default function ChannelSidebar({
         <div className="flex items-center gap-2 p-1 rounded-lg hover:bg-[#E3E5E8] cursor-pointer mr-auto min-w-0 flex-1 transition-all duration-200 group">
           <div className="relative shrink-0">
             <Avatar
-              initial={user ? getInitials(user.username) : "U"}
+              initial={user ? getInitials(getDisplayNameForUser()) : "U"}
+              avatarUrl={user?.avatar || undefined}
               size="md"
               gradient={{ from: "#F0B232", to: "#E0A020" }}
               shadow
@@ -287,7 +401,7 @@ export default function ChannelSidebar({
           </div>
           <div className="text-sm min-w-0 flex-1 overflow-hidden">
             <div className="font-bold text-[#060607] text-[13px] leading-tight -mb-0.5 truncate">
-              {user ? user.username : "Username"}
+              {getDisplayNameForUser()}
             </div>
             <div className="text-[11px] text-[#747F8D] truncate">
               {getUserTag()}

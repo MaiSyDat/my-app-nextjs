@@ -10,6 +10,7 @@ import dbConnect from "@/app/lib/database/mongodb";
 import Friendship from "@/app/models/Friendship";
 import User from "@/app/models/User"; // Import User model để đảm bảo được đăng ký trước khi populate
 import mongoose from "mongoose";
+import { normalizeObjectId } from "@/app/lib/utils/serverApiUtils";
 
 /**
  * GET /api/friends
@@ -33,10 +34,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate và convert userId
-    let userIdObj: mongoose.Types.ObjectId;
-    try {
-      userIdObj = new mongoose.Types.ObjectId(userId);
-    } catch (error) {
+    const userIdObj = normalizeObjectId(userId);
+    if (!userIdObj) {
       return NextResponse.json(
         { message: "Invalid userId format." },
         { status: 400 }
@@ -111,16 +110,22 @@ export async function GET(request: NextRequest) {
             _id: "$user1._id",
             username: "$user1.username",
             email: "$user1.email",
+            displayName: "$user1.displayName",
+            avatar: "$user1.avatar",
           },
           user2: {
             _id: "$user2._id",
             username: "$user2.username",
             email: "$user2.email",
+            displayName: "$user2.displayName",
+            avatar: "$user2.avatar",
           },
           requester: {
             _id: "$requester._id",
             username: "$requester.username",
             email: "$requester.email",
+            displayName: "$requester.displayName",
+            avatar: "$requester.avatar",
           },
         },
       },
@@ -158,6 +163,8 @@ export async function GET(request: NextRequest) {
             id: friend._id.toString(),
             username: friend.username || "Unknown",
             email: friend.email || "",
+            displayName: friend.displayName || null,
+            avatar: friend.avatar || null,
           },
           status: friendship.status,
           requestedBy: friendship.requester
@@ -165,6 +172,8 @@ export async function GET(request: NextRequest) {
                 id: friendship.requester._id.toString(),
                 username: friendship.requester.username || "Unknown",
                 email: friendship.requester.email || "",
+                displayName: friendship.requester.displayName || null,
+                avatar: friendship.requester.avatar || null,
               }
             : null,
           acceptedAt: friendship.acceptedAt,
@@ -223,8 +232,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert và normalize
-    const userId1Obj = new mongoose.Types.ObjectId(userId1);
-    const userId2Obj = new mongoose.Types.ObjectId(userId2);
+    const userId1Obj = normalizeObjectId(userId1);
+    const userId2Obj = normalizeObjectId(userId2);
+    
+    if (!userId1Obj || !userId2Obj) {
+      return NextResponse.json(
+        { message: "Invalid userId format." },
+        { status: 400 }
+      );
+    }
 
     // Chuẩn hóa: userId1 < userId2 để tránh duplicate
     const [normalizedUserId1, normalizedUserId2] =
@@ -237,6 +253,8 @@ export async function POST(request: NextRequest) {
       userId1: normalizedUserId1,
       userId2: normalizedUserId2,
     });
+
+    let friendshipToReturn;
 
     if (existingFriendship) {
       if (existingFriendship.status === "accepted") {
@@ -257,21 +275,35 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+      // Nếu status là "unfriended", cập nhật thành "pending" thay vì tạo mới
+      if (existingFriendship.status === "unfriended") {
+        existingFriendship.status = "pending";
+        existingFriendship.requestedBy = userId1Obj; // Người gửi là userId1 ban đầu (trước khi normalize)
+        await existingFriendship.save({ validateBeforeSave: false }); // Tạm thời bypass validation
+        friendshipToReturn = existingFriendship;
+      } else {
+        // Nếu có existingFriendship nhưng không match các điều kiện trên, không làm gì
+        return NextResponse.json(
+          { message: "Cannot process this friendship status." },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Tạo friendship mới nếu chưa có
+      const newFriendship = await Friendship.create({
+        userId1: normalizedUserId1,
+        userId2: normalizedUserId2,
+        status: "pending",
+        requestedBy: userId1Obj, // Người gửi là userId1 ban đầu (trước khi normalize)
+      });
+      friendshipToReturn = newFriendship;
     }
 
-    // Tạo friendship mới
-    const newFriendship = await Friendship.create({
-      userId1: normalizedUserId1,
-      userId2: normalizedUserId2,
-      status: "pending",
-      requestedBy: userId1Obj, // Người gửi là userId1 ban đầu (trước khi normalize)
-    });
-
     // Populate và trả về
-    const populatedFriendship = await Friendship.findById(newFriendship._id)
-      .populate("userId1", "username email")
-      .populate("userId2", "username email")
-      .populate("requestedBy", "username email")
+    const populatedFriendship = await Friendship.findById(friendshipToReturn._id)
+      .populate("userId1", "username email displayName avatar")
+      .populate("userId2", "username email displayName avatar")
+      .populate("requestedBy", "username email displayName avatar")
       .lean();
 
     return NextResponse.json(
@@ -325,8 +357,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Convert và normalize
-    const userIdObj = new mongoose.Types.ObjectId(userId);
-    const friendIdObj = new mongoose.Types.ObjectId(friendId);
+    const userIdObj = normalizeObjectId(userId);
+    const friendIdObj = normalizeObjectId(friendId);
+    
+    if (!userIdObj || !friendIdObj) {
+      return NextResponse.json(
+        { message: "Invalid userId or friendId format." },
+        { status: 400 }
+      );
+    }
 
     // Chuẩn hóa: userId1 < userId2 để tránh duplicate
     const [normalizedUserId1, normalizedUserId2] =
@@ -334,11 +373,11 @@ export async function DELETE(request: NextRequest) {
         ? [userIdObj, friendIdObj]
         : [friendIdObj, userIdObj];
 
-    // Tìm và xóa friendship
-    const friendship = await Friendship.findOneAndDelete({
+    // Tìm friendship và cập nhật status thành "unfriended" thay vì xóa
+    const friendship = await Friendship.findOne({
       userId1: normalizedUserId1,
       userId2: normalizedUserId2,
-      status: "accepted", // Chỉ xóa nếu đã là bạn bè
+      status: "accepted", // Chỉ unfriend nếu đã là bạn bè
     });
 
     if (!friendship) {
@@ -347,6 +386,14 @@ export async function DELETE(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Cập nhật status thành "unfriended" thay vì xóa
+    // Sử dụng updateOne để xóa requestedBy
+    await Friendship.updateOne(
+      { _id: friendship._id },
+      { $set: { status: "unfriended" }, $unset: { requestedBy: "" } },
+      { runValidators: false }
+    );
 
     return NextResponse.json(
       {

@@ -19,7 +19,7 @@ interface DateDividerProps {
 const DateDivider = memo(function DateDivider({ date }: DateDividerProps) {
   const formattedDate = useMemo(() => {
     const d = new Date(date);
-    return d.toLocaleDateString("vi-VN", {
+    return d.toLocaleDateString("en-US", {
       day: "numeric",
       month: "long",
       year: "numeric",

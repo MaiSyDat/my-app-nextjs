@@ -3,7 +3,7 @@
  * 
  * Context này cung cấp:
  * - State quản lý danh sách toasts
- * - Functions để show/hide toasts (showSuccess, showError, showWarning)
+ * - Functions để show/hide toasts (showSuccess, showError)
  * - Auto-remove toasts sau một khoảng thời gian
  * - ToastContainer component để render toasts
  */
@@ -18,7 +18,6 @@ interface ToastContextType {
   showToast: (message: string, type?: ToastType, duration?: number) => void;
   showSuccess: (message: string, duration?: number) => void;
   showError: (message: string, duration?: number) => void;
-  showWarning: (message: string, duration?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -63,15 +62,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [showToast]
   );
 
-  const showWarning = useCallback(
-    (message: string, duration?: number) => {
-      showToast(message, "warning", duration);
-    },
-    [showToast]
-  );
-
   return (
-    <ToastContext.Provider value={{ showToast, showSuccess, showError, showWarning }}>
+    <ToastContext.Provider value={{ showToast, showSuccess, showError }}>
       {children}
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </ToastContext.Provider>

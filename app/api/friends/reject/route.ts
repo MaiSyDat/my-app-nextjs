@@ -34,8 +34,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Tìm và xóa friendship
-    const friendship = await Friendship.findByIdAndDelete(friendshipIdObj);
+    // Tìm friendship và cập nhật status thành "unfriended" thay vì xóa
+    const friendship = await Friendship.findById(friendshipIdObj);
 
     if (!friendship) {
       return NextResponse.json(
@@ -44,9 +44,17 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Cập nhật status thành "unfriended" thay vì xóa
+    // Sử dụng updateOne để xóa requestedBy
+    await Friendship.updateOne(
+      { _id: friendship._id },
+      { $set: { status: "unfriended" }, $unset: { requestedBy: "" } },
+      { runValidators: false }
+    );
+
     return NextResponse.json(
       {
-        message: "Friend request rejected/deleted.",
+        message: "Friend request rejected.",
       },
       { status: 200 }
     );

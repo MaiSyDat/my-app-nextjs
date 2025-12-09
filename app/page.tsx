@@ -23,7 +23,7 @@ export default function Home() {
     e.preventDefault();
     const token = localStorage.getItem("token");
     if (token) {
-      window.location.href = "/discord";
+      window.location.href = "/channels/me";
     } else {
       window.location.href = "/login";
     }

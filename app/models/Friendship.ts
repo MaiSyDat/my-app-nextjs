@@ -19,8 +19,8 @@ export interface IFriendship extends Document {
   // ID người dùng 2
   userId2: mongoose.Types.ObjectId;
   
-  // Trạng thái: pending (chờ chấp nhận), accepted (đã chấp nhận), blocked (đã chặn)
-  status: "pending" | "accepted" | "blocked";
+  // Trạng thái: pending (chờ chấp nhận), accepted (đã chấp nhận), blocked (đã chặn), unfriended (đã xóa bạn)
+  status: "pending" | "accepted" | "blocked" | "unfriended";
   
   // Ai là người gửi lời mời kết bạn (userId1 hoặc userId2)
   requestedBy: mongoose.Types.ObjectId;
@@ -55,7 +55,7 @@ const FriendshipSchema: Schema<IFriendship> = new Schema(
     // Trạng thái mối quan hệ
     status: {
       type: String,
-      enum: ["pending", "accepted", "blocked"],
+      enum: ["pending", "accepted", "blocked", "unfriended"],
       default: "pending",
       index: true,
     },

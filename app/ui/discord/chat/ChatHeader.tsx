@@ -8,16 +8,21 @@
 
 "use client";
 
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
+import StatusIndicator from "../../common/StatusIndicator";
 import { useToast } from "@/app/ui/toast";
 import { useFriendsContext } from "@/app/contexts/FriendsContext";
+import { useUserStatusContext } from "@/app/contexts/UserStatusContext";
 
 interface ChatHeaderProps {
   userName: string;
   userAvatar: string;
   friendId?: string;
+  friendshipStatus?: string; // Thêm friendship status
+  requestedBy?: string | null; // ID của người đã gửi friend request (nếu status là pending) hoặc người block (nếu status là blocked)
+  blockedBy?: string | null; // ID của người đã block (nếu bị block)
   onUnfriend?: () => void;
   onBlock?: () => void;
 }
@@ -27,13 +32,42 @@ const ChatHeader = memo(function ChatHeader({
   userName, 
   userAvatar,
   friendId,
+  friendshipStatus,
+  requestedBy,
+  blockedBy,
   onUnfriend,
   onBlock
 }: ChatHeaderProps) {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { showError, showSuccess } = useToast();
-  const { unfriend, blockUser } = useFriendsContext();
+  const { unfriend, blockUser, unblockUser, sendFriendRequest } = useFriendsContext();
+  const { getUserStatus } = useUserStatusContext();
+  
+  /**
+   * Lấy ID của user hiện tại từ localStorage
+   */
+  const currentUserId = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const userData = localStorage.getItem("user");
+    if (!userData) return null;
+    try {
+      const user = JSON.parse(userData);
+      return user.id || user._id || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Tính toán các trạng thái - memoized
+  const isRequestSentByCurrentUser = useMemo(() => 
+    friendshipStatus === "pending" && requestedBy === currentUserId,
+    [friendshipStatus, requestedBy, currentUserId]
+  );
+  const isCurrentUserBlocked = useMemo(() => 
+    friendshipStatus === "blocked" && (blockedBy === currentUserId || requestedBy === currentUserId),
+    [friendshipStatus, blockedBy, requestedBy, currentUserId]
+  );
 
   // Đóng menu khi click bên ngoài
   useEffect(() => {
@@ -52,40 +86,104 @@ const ChatHeader = memo(function ChatHeader({
     };
   }, [showMenu]);
 
-  const handleUnfriend = async () => {
+  /**
+   * Xử lý hành động hủy kết bạn
+   */
+  const handleUnfriend = useCallback(async () => {
     setShowMenu(false);
     if (!friendId) return;
 
     const success = await unfriend(friendId);
     if (success) {
-      showSuccess("Đã xóa bạn thành công");
+      showSuccess("Friend removed successfully");
       onUnfriend?.();
     } else {
-      showError("Không thể xóa bạn");
+      showError("Unable to remove friend");
     }
-  };
+  }, [friendId, unfriend, showSuccess, showError, onUnfriend]);
 
-  const handleBlock = async () => {
+  /**
+   * Xử lý hành động chặn/bỏ chặn user
+   */
+  const handleBlock = useCallback(async () => {
     setShowMenu(false);
     if (!friendId) return;
 
-    const success = await blockUser(friendId);
-    if (success) {
-      showSuccess("Đã chặn người dùng thành công");
-      onBlock?.();
-    } else {
-      showError("Không thể chặn người dùng");
+    // Nếu đã bị chặn và current user là người block, unblock
+    if (friendshipStatus === "blocked" && isCurrentUserBlocked) {
+      const success = await unblockUser(friendId);
+      if (success) {
+        showSuccess("User unblocked successfully");
+        onBlock?.();
+      } else {
+        showError("Unable to unblock user");
+      }
+    } else if (friendshipStatus !== "blocked") {
+      // Chỉ cho phép block nếu chưa bị block
+      const success = await blockUser(friendId);
+      if (success) {
+        showSuccess("User blocked successfully");
+        onBlock?.();
+      } else {
+        showError("Unable to block user");
+      }
     }
-  };
+  }, [friendId, friendshipStatus, isCurrentUserBlocked, unblockUser, blockUser, showSuccess, showError, onBlock]);
+
+  /**
+   * Xử lý gửi lời mời kết bạn
+   */
+  const handleAddFriend = useCallback(async () => {
+    setShowMenu(false);
+    if (!friendId) return;
+
+    const success = await sendFriendRequest(friendId);
+    if (success) {
+      showSuccess("Friend request sent!");
+      onUnfriend?.();
+    } else {
+      showError("Unable to send friend request");
+    }
+  }, [friendId, sendFriendRequest, showSuccess, showError, onUnfriend]);
+  /**
+   * Định dạng URL avatar
+   */
+  const avatarUrl = useMemo(() => {
+    if (!userAvatar) return undefined;
+    // Nếu đã là URL đầy đủ (http/https)
+    if (userAvatar.startsWith('http://') || userAvatar.startsWith('https://')) {
+      return userAvatar;
+    }
+    // Nếu là đường dẫn file (bắt đầu bằng /)
+    if (userAvatar.startsWith('/')) {
+      return userAvatar;
+    }
+    // Nếu là đường dẫn tương đối (không bắt đầu bằng /)
+    if (userAvatar.includes('/')) {
+      return `/${userAvatar}`;
+    }
+    // Nếu không phải URL hợp lệ, trả về undefined để dùng initial
+    return undefined;
+  }, [userAvatar]);
+
+  const avatarInitial = useMemo(() => userName.charAt(0).toUpperCase(), [userName]);
+
   return (
     <div className="h-12 px-4 flex items-center border-b border-[#E3E5E8] bg-[#FFFFFF] shrink-0">
       {/* Avatar và tên */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <Avatar 
-          initial={userAvatar && !userAvatar.startsWith('http') ? userAvatar : userName.charAt(0).toUpperCase()} 
-          avatarUrl={userAvatar && userAvatar.startsWith('http') ? userAvatar : undefined}
-          size="md" 
-        />
+        <div className="relative shrink-0">
+          <Avatar 
+            initial={avatarInitial} 
+            avatarUrl={avatarUrl}
+            size="md" 
+          />
+          {friendId && (
+            <div className="absolute -bottom-0.5 -right-0.5">
+              <StatusIndicator status={getUserStatus(friendId)} size="md" />
+            </div>
+          )}
+        </div>
         <h2 className="text-base font-semibold text-[#060607] truncate">
           {userName}
         </h2>
@@ -120,25 +218,47 @@ const ChatHeader = memo(function ChatHeader({
           <button 
             onClick={() => setShowMenu(!showMenu)}
             className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]"
-            title="Tùy chọn"
+            title="Options"
           >
             <Icon src="more-vertical.svg" className="w-5 h-5" size={20} />
           </button>
           {showMenu && friendId && (
             <div className="absolute right-0 top-full mt-1 w-48 bg-[#FFFFFF] border border-[#E3E5E8] rounded shadow-lg z-50">
               <div className="py-1">
-                <button
-                  onClick={handleUnfriend}
-                  className="w-full px-4 py-2 text-left text-sm text-[#060607] hover:bg-[#E3E5E8] transition-colors"
-                >
-                  Xóa Bạn
-                </button>
-                <button
-                  onClick={handleBlock}
-                  className="w-full px-4 py-2 text-left text-sm text-[#ED4245] hover:bg-[#E3E5E8] transition-colors"
-                >
-                  Chặn
-                </button>
+                {friendshipStatus === "accepted" ? (
+                  <>
+                    <button
+                      onClick={handleUnfriend}
+                      className="w-full px-4 py-2 text-left text-sm text-[#060607] hover:bg-[#E3E5E8] transition-colors"
+                    >
+                      Unfriend
+                    </button>
+                    <button
+                      onClick={handleBlock}
+                      className="w-full px-4 py-2 text-left text-sm text-[#ED4245] hover:bg-[#E3E5E8] transition-colors"
+                    >
+                      Block
+                    </button>
+                  </>
+                ) : friendshipStatus === "blocked" && isCurrentUserBlocked ? (
+                  <button
+                    onClick={handleBlock}
+                    className="w-full px-4 py-2 text-left text-sm text-[#060607] hover:bg-[#E3E5E8] transition-colors"
+                  >
+                    Unblock
+                  </button>
+                ) : isRequestSentByCurrentUser ? (
+                  <div className="w-full px-4 py-2 text-sm text-[#747F8D] cursor-not-allowed">
+                    Friend Request Sent
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleAddFriend}
+                    className="w-full px-4 py-2 text-left text-sm text-[#060607] hover:bg-[#E3E5E8] transition-colors"
+                  >
+                    Add Friend
+                  </button>
+                )}
               </div>
             </div>
           )}

@@ -18,10 +18,19 @@ export interface Friend {
     id: string;
     username: string;
     email: string;
+    displayName?: string | null;
+    avatar?: string | null;
   };
   status: string;
   createdAt: Date;
   acceptedAt?: Date;
+  requestedBy?: {
+    id: string;
+    username: string;
+    email: string;
+    displayName?: string | null;
+    avatar?: string | null;
+  } | null;
 }
 
 export interface PendingRequest {
@@ -30,12 +39,16 @@ export interface PendingRequest {
     id: string;
     username: string;
     email: string;
+    displayName?: string | null;
+    avatar?: string | null;
   };
   status: string;
   requestedBy: {
     id: string;
     username: string;
     email: string;
+    displayName?: string | null;
+    avatar?: string | null;
   };
   createdAt: Date;
 }
@@ -55,7 +68,7 @@ interface FriendsContextType {
   sendFriendRequest: (targetUserId: string) => Promise<boolean>;
   unfriend: (friendId: string) => Promise<boolean>;
   blockUser: (friendId: string) => Promise<boolean>;
-  refreshAll: () => Promise<void>;
+  unblockUser: (friendId: string) => Promise<boolean>;
 }
 
 const FriendsContext = createContext<FriendsContextType | undefined>(undefined);
@@ -73,7 +86,9 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
   // Ref để track xem đã fetch lần đầu chưa (tránh fetch nhiều lần)
   const hasFetchedRef = useRef(false);
 
-  // Lấy userId từ localStorage
+  /**
+   * Lấy ID của user hiện tại từ localStorage
+   */
   const getCurrentUserId = useCallback((): string | null => {
     if (typeof window === "undefined") return null;
     const userData = localStorage.getItem("user");
@@ -86,7 +101,9 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     }
   }, []);
 
-  // Fetch danh sách bạn bè đã chấp nhận - tối ưu với cache
+  /**
+   * Lấy danh sách bạn bè từ API (accepted, blocked, unfriended)
+   */
   const fetchFriends = useCallback(async () => {
     const userId = getCurrentUserId();
     if (!userId) {
@@ -96,16 +113,30 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
 
     try {
       setError(null);
-      const response = await fetch(`/api/friends?userId=${userId}&status=accepted`, {
-        cache: 'no-store', // Đảm bảo luôn lấy dữ liệu mới nhất
-      });
+      // Fetch cả accepted, blocked và unfriended users
+      const [acceptedResponse, blockedResponse, unfriendedResponse] = await Promise.all([
+        fetch(`/api/friends?userId=${userId}&status=accepted`, {
+          cache: 'no-store',
+        }),
+        fetch(`/api/friends?userId=${userId}&status=blocked`, {
+          cache: 'no-store',
+        }),
+        fetch(`/api/friends?userId=${userId}&status=unfriended`, {
+          cache: 'no-store',
+        }),
+      ]);
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch friends: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setFriends(data.friends || []);
+      const acceptedData = acceptedResponse.ok ? await acceptedResponse.json() : { friends: [] };
+      const blockedData = blockedResponse.ok ? await blockedResponse.json() : { friends: [] };
+      const unfriendedData = unfriendedResponse.ok ? await unfriendedResponse.json() : { friends: [] };
+      
+      // Merge cả ba lists
+      const allFriends = [
+        ...(acceptedData.friends || []), 
+        ...(blockedData.friends || []), 
+        ...(unfriendedData.friends || [])
+      ];
+      setFriends(allFriends);
     } catch (err: any) {
       const errorMessage = err.message || "Failed to fetch friends";
       setError(errorMessage);
@@ -114,7 +145,9 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     }
   }, [getCurrentUserId]);
 
-  // Fetch danh sách pending requests (chỉ incoming - người khác gửi cho mình) - tối ưu
+  /**
+   * Lấy danh sách lời mời kết bạn đang chờ (chỉ incoming requests)
+   */
   const fetchPendingRequests = useCallback(async () => {
     const userId = getCurrentUserId();
     if (!userId) {
@@ -156,16 +189,18 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     }
   }, [getCurrentUserId]);
 
-  // Chấp nhận lời mời kết bạn - optimistic update với rollback
+  /**
+   * Chấp nhận lời mời kết bạn
+   */
   const acceptRequest = useCallback(async (friendshipId: string): Promise<boolean> => {
-    // Tìm request trước để lưu thông tin (tránh closure stale)
+    // Lưu snapshot trước khi update để rollback nếu API fail (tránh closure stale)
     const requestSnapshot = pendingRequests.find(r => r.friendshipId === friendshipId);
     if (!requestSnapshot) {
       setError("Request not found");
       return false;
     }
 
-    // Optimistic update: cập nhật state ngay lập tức
+    // Optimistic update: cập nhật UI ngay (xóa khỏi pending, thêm vào friends) để UX mượt
     setPendingRequests(prev => prev.filter(r => r.friendshipId !== friendshipId));
     setFriends(prev => [...prev, {
       friendshipId: requestSnapshot.friendshipId,
@@ -184,24 +219,33 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
       });
 
       if (!response.ok) {
-        // Rollback nếu API fail
-        await fetchPendingRequests();
-        await fetchFriends();
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || "Failed to accept request");
       }
 
       return true;
     } catch (err: any) {
+      // Rollback: khôi phục state ban đầu từ snapshot (thêm lại vào pending, xóa khỏi friends)
+      setPendingRequests(prev => [...prev, requestSnapshot]);
+      setFriends(prev => prev.filter(f => f.friendshipId !== friendshipId));
       const errorMessage = err.message || "Failed to accept request";
       setError(errorMessage);
       console.error("Error accepting request:", errorMessage);
       return false;
     }
-  }, [pendingRequests, fetchPendingRequests, fetchFriends]);
+  }, [pendingRequests]);
 
-  // Từ chối/xóa lời mời kết bạn - optimistic update
+  /**
+   * Từ chối lời mời kết bạn
+   */
   const rejectRequest = useCallback(async (friendshipId: string): Promise<boolean> => {
+    // Tìm request trước để lưu thông tin (tránh closure stale)
+    const requestSnapshot = pendingRequests.find(r => r.friendshipId === friendshipId);
+    if (!requestSnapshot) {
+      setError("Request not found");
+      return false;
+    }
+
     // Optimistic update: xóa khỏi pendingRequests ngay lập tức
     setPendingRequests(prev => prev.filter(r => r.friendshipId !== friendshipId));
 
@@ -214,22 +258,25 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
       });
 
       if (!response.ok) {
-        // Rollback nếu API fail
-        await fetchPendingRequests();
+        // Rollback nếu API fail - chỉ rollback state, không refresh
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || "Failed to reject request");
       }
 
       return true;
     } catch (err: any) {
+      // Rollback optimistic update nếu có lỗi
+      setPendingRequests(prev => [...prev, requestSnapshot]);
       const errorMessage = err.message || "Failed to reject request";
       setError(errorMessage);
       console.error("Error rejecting request:", errorMessage);
       return false;
     }
-  }, [fetchPendingRequests]);
+  }, [pendingRequests]);
 
-  // Gửi lời mời kết bạn - không cần cập nhật state vì chỉ gửi request
+  /**
+   * Gửi lời mời kết bạn
+   */
   const sendFriendRequest = useCallback(async (targetUserId: string): Promise<boolean> => {
     const userId = getCurrentUserId();
     if (!userId) {
@@ -257,7 +304,9 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     }
   }, [getCurrentUserId]);
 
-  // Xóa bạn (unfriend) - optimistic update với rollback
+  /**
+   * Hủy kết bạn (unfriend)
+   */
   const unfriend = useCallback(async (friendId: string): Promise<boolean> => {
     const userId = getCurrentUserId();
     if (!userId) {
@@ -265,8 +314,15 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
       return false;
     }
 
-    // Optimistic update: xóa khỏi friends ngay lập tức
-    setFriends(prev => prev.filter(f => String(f.friend.id) !== String(friendId)));
+    // Lưu snapshot để rollback nếu API fail
+    const friendSnapshot = friends.find(f => String(f.friend.id) === String(friendId));
+
+    // Optimistic update: cập nhật status thành "unfriended" ngay (không xóa khỏi list, chỉ đổi status)
+    setFriends(prev => prev.map(f => 
+      String(f.friend.id) === String(friendId) 
+        ? { ...f, status: "unfriended" as any }
+        : f
+    ));
 
     try {
       setError(null);
@@ -277,24 +333,30 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
       });
 
       if (!response.ok) {
-        // Rollback nếu API fail
-        await fetchFriends();
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || "Failed to unfriend");
       }
 
       return true;
     } catch (err: any) {
-      // Rollback nếu có lỗi
-      await fetchFriends();
+      // Rollback: khôi phục status ban đầu từ snapshot
+      if (friendSnapshot) {
+        setFriends(prev => prev.map(f => 
+          String(f.friend.id) === String(friendId) 
+            ? friendSnapshot
+            : f
+        ));
+      }
       const errorMessage = err.message || "Failed to unfriend";
       setError(errorMessage);
       console.error("Error unfriending:", errorMessage);
       return false;
     }
-  }, [getCurrentUserId, fetchFriends]);
+  }, [getCurrentUserId, friends]);
 
-  // Chặn user - optimistic update với rollback
+  /**
+   * Chặn user
+   */
   const blockUser = useCallback(async (friendId: string): Promise<boolean> => {
     const userId = getCurrentUserId();
     if (!userId) {
@@ -302,8 +364,25 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
       return false;
     }
 
-    // Optimistic update: xóa khỏi friends ngay lập tức
-    setFriends(prev => prev.filter(f => String(f.friend.id) !== String(friendId)));
+    // Lưu snapshot để rollback nếu API fail
+    const friendSnapshot = friends.find(f => String(f.friend.id) === String(friendId));
+
+    // Optimistic update: đổi status thành "blocked" và lưu userId vào requestedBy (để biết ai là người block)
+    setFriends(prev => prev.map(f => 
+      String(f.friend.id) === String(friendId) 
+        ? { 
+            ...f, 
+            status: "blocked",
+            requestedBy: { 
+              id: userId, 
+              username: "", 
+              email: "",
+              displayName: null,
+              avatar: null
+            }
+          }
+        : f
+    ));
 
     try {
       setError(null);
@@ -314,32 +393,77 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
       });
 
       if (!response.ok) {
-        // Rollback nếu API fail
-        await fetchFriends();
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || "Failed to block user");
       }
 
       return true;
     } catch (err: any) {
-      // Rollback nếu có lỗi
-      await fetchFriends();
+      // Rollback: khôi phục state ban đầu từ snapshot
+      if (friendSnapshot) {
+        setFriends(prev => prev.map(f => 
+          String(f.friend.id) === String(friendId) 
+            ? friendSnapshot
+            : f
+        ));
+      }
       const errorMessage = err.message || "Failed to block user";
       setError(errorMessage);
       console.error("Error blocking user:", errorMessage);
       return false;
     }
-  }, [getCurrentUserId, fetchFriends]);
+  }, [getCurrentUserId, friends]);
 
-  // Refresh tất cả
-  const refreshAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      await Promise.all([fetchFriends(), fetchPendingRequests()]);
-    } finally {
-      setLoading(false);
+  /**
+   * Bỏ chặn user
+   */
+  const unblockUser = useCallback(async (friendId: string): Promise<boolean> => {
+    const userId = getCurrentUserId();
+    if (!userId) {
+      setError("User not logged in");
+      return false;
     }
-  }, [fetchFriends, fetchPendingRequests]);
+
+    // Lưu snapshot trước khi update để rollback nếu cần
+    const friendSnapshot = friends.find(f => String(f.friend.id) === String(friendId));
+
+    // Optimistic update: cập nhật status thành "unfriended" và xóa requestedBy (người block)
+    setFriends(prev => prev.map(f => 
+      String(f.friend.id) === String(friendId) 
+        ? { ...f, status: "unfriended" as any, requestedBy: undefined }
+        : f
+    ));
+
+    try {
+      setError(null);
+      const response = await fetch(`/api/friends/unblock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, blockedUserId: friendId }),
+      });
+
+      if (!response.ok) {
+        // Rollback nếu API fail - chỉ rollback state, không refresh
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to unblock user");
+      }
+
+      return true;
+    } catch (err: any) {
+      // Rollback optimistic update nếu có lỗi
+      if (friendSnapshot) {
+        setFriends(prev => prev.map(f => 
+          String(f.friend.id) === String(friendId) 
+            ? friendSnapshot
+            : f
+        ));
+      }
+      const errorMessage = err.message || "Failed to unblock user";
+      setError(errorMessage);
+      console.error("Error unblocking user:", errorMessage);
+      return false;
+    }
+  }, [getCurrentUserId, friends]);
 
   // Auto-fetch chỉ một lần khi mount (khi userId có sẵn)
   useEffect(() => {
@@ -349,7 +473,10 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     const userId = getCurrentUserId();
     if (userId) {
       hasFetchedRef.current = true;
-      refreshAll();
+      setLoading(true);
+      Promise.all([fetchFriends(), fetchPendingRequests()]).finally(() => {
+        setLoading(false);
+      });
     }
     // Chỉ chạy một lần khi mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -368,7 +495,7 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     sendFriendRequest,
     unfriend,
     blockUser,
-    refreshAll,
+    unblockUser,
   }), [
     friends,
     pendingRequests,
@@ -381,7 +508,7 @@ export function FriendsProvider({ children }: FriendsProviderProps) {
     sendFriendRequest,
     unfriend,
     blockUser,
-    refreshAll,
+    unblockUser,
   ]);
 
   return <FriendsContext.Provider value={value}>{children}</FriendsContext.Provider>;

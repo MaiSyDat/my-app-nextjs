@@ -26,7 +26,6 @@ interface Message {
   content?: string;
   icon?: string;
   createdAt?: Date | string;
-  senderId?: string;
 }
 
 interface MessageListProps {
@@ -35,25 +34,23 @@ interface MessageListProps {
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   userProfileHeader?: React.ReactNode;
-  currentUserId?: string | null;
 }
 
 // Component hiển thị danh sách tin nhắn với date divider logic - Memoized
-const MessageList = memo(function MessageList({ messages, displayedCount, onScroll, containerRef, userProfileHeader, currentUserId }: MessageListProps) {
+const MessageList = memo(function MessageList({ messages, displayedCount, onScroll, containerRef, userProfileHeader }: MessageListProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const ref = containerRef || internalRef;
 
-  // Logic kiểm tra có nên hiển thị date divider không
+  // Kiểm tra có nên hiển thị date divider: tin nhắn đầu tiên, cách nhau >= 15 phút, hoặc khác ngày
   const shouldShowDateDivider = (msg: Message, index: number, array: Message[]) => {
-    // Nếu là tin nhắn đầu tiên, luôn hiển thị date divider
     if (index === 0) return true;
     
-    // Nếu là tin nhắn system hoặc date, không hiển thị date divider
+    // Bỏ qua tin nhắn system/date
     if (msg.type === "system" || msg.type === "date") return false;
     
     let prevMsg = array[index - 1];
     
-    // Nếu tin nhắn trước là system hoặc date, tìm tin nhắn trước đó không phải system/date
+    // Tìm tin nhắn thường gần nhất (bỏ qua system/date)
     if (prevMsg.type === "system" || prevMsg.type === "date") {
       let prevNormalMsg = null;
       for (let i = index - 1; i >= 0; i--) {
@@ -66,16 +63,14 @@ const MessageList = memo(function MessageList({ messages, displayedCount, onScro
       prevMsg = prevNormalMsg;
     }
     
-    // So sánh thời gian
+    // So sánh thời gian: hiển thị divider nếu cách >= 15 phút hoặc khác ngày
     if (msg.createdAt && prevMsg.createdAt) {
       const currentTime = new Date(msg.createdAt).getTime();
       const prevTime = new Date(prevMsg.createdAt).getTime();
       const diffMinutes = (currentTime - prevTime) / (1000 * 60);
       
-      // Hiển thị date divider nếu cách nhau >= 15 phút
       if (diffMinutes >= 15) return true;
       
-      // Hoặc nếu khác ngày
       const currentDate = new Date(msg.createdAt).toDateString();
       const prevDate = new Date(prevMsg.createdAt).toDateString();
       if (currentDate !== prevDate) return true;
@@ -84,12 +79,12 @@ const MessageList = memo(function MessageList({ messages, displayedCount, onScro
     return false;
   };
 
-  // Memoize displayed messages để tránh re-render không cần thiết
+  // Lấy số lượng tin nhắn cần hiển thị (lazy load từ cuối danh sách)
   const displayedMessages = useMemo(() => {
     return messages.slice(-displayedCount);
   }, [messages, displayedCount]);
 
-  // Memoize divider flags để tránh tính toán lại
+  // Tính toán flags cho date divider (memoize để tránh tính lại mỗi lần render)
   const dividerFlags = useMemo(() => {
     const flags: boolean[] = [];
     displayedMessages.forEach((msg, index) => {
@@ -141,8 +136,6 @@ const MessageList = memo(function MessageList({ messages, displayedCount, onScro
               content={msg.content || ""}
               type={msg.type}
               icon={msg.icon}
-              senderId={msg.senderId}
-              currentUserId={currentUserId}
             />
           </div>
         );

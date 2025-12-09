@@ -11,8 +11,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { usePushNotifications } from "@/app/hooks/usePushNotifications";
+import SettingsItem from "./components/SettingsItem";
+import LogoutConfirmModal from "./components/LogoutConfirmModal";
+import AccountTab from "./components/AccountTab";
+import PrivacyTab from "./components/PrivacyTab";
 
 type SettingsTab = "account" | "privacy" | "connections" | "billing" | "nitro" | "logout";
 
@@ -26,36 +28,72 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     username: string;
     email: string;
     id: string;
+    displayName?: string | null;
+    avatar?: string | null;
   } | null>(null);
 
   // Lấy thông tin user từ localStorage khi component mount
   useEffect(() => {
-    // Kiểm tra xem có user data trong localStorage không
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-      } catch (error) {
-        // Silent fail
+    const fetchUserData = async () => {
+      const userData = localStorage.getItem("user");
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          const userId = parsedUser.id || parsedUser._id;
+          if (userId) {
+            // Fetch full user data để lấy displayName và avatar
+            const response = await fetch(`/api/users/${userId}`);
+            if (response.ok) {
+              const data = await response.json();
+              setUser({
+                username: data.user.username || "",
+                email: data.user.email || "",
+                id: data.user.id || userId,
+                displayName: data.user.displayName || null,
+                avatar: data.user.avatar || null,
+              });
+            } else {
+              // Fallback to localStorage data
+              setUser({
+                username: parsedUser.username || "",
+                email: parsedUser.email || "",
+                id: userId,
+                displayName: parsedUser.displayName || null,
+                avatar: parsedUser.avatar || null,
+              });
+            }
+          }
+        } catch (error) {
+          // Silent fail
+        }
       }
-    }
+    };
+    fetchUserData();
   }, []);
 
-  // Sử dụng push notifications hook
-  const { isSupported, isSubscribed, isLoading, subscribe, unsubscribe } = usePushNotifications();
-
-  // Hàm helper để lấy chữ cái đầu của username cho avatar
+  // Lấy chữ cái đầu của username cho avatar
   const getInitials = (username: string) => {
     if (!username) return "U";
     return username.charAt(0).toUpperCase();
   };
 
+  // Chọn tab và hiển thị logout confirm nếu chọn logout
   const handleSelectTab = (tab: SettingsTab) => {
     setActiveTab(tab);
     if (tab === "logout") {
       setShowLogoutConfirm(true);
     }
+  };
+
+  // Cập nhật user state khi user được update từ AccountTab
+  const handleUserUpdate = (updatedUser: any) => {
+    setUser({
+      username: updatedUser.username || user?.username || "",
+      email: updatedUser.email || user?.email || "",
+      id: updatedUser.id || user?.id || "",
+      displayName: updatedUser.displayName || null,
+      avatar: updatedUser.avatar || null,
+    });
   };
 
   return (
@@ -65,14 +103,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="w-64 bg-[#F7F8F9] flex flex-col">
           <div className="px-4 py-4 border-b border-[#E3E5E8]">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#5865F2] flex items-center justify-center">
-                <span className="text-white text-xs font-semibold">
-                  {user ? getInitials(user.username) : "U"}
-                </span>
+              <div className="w-10 h-10 rounded-full bg-[#5865F2] flex items-center justify-center overflow-hidden">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white text-xs font-semibold">
+                    {user ? getInitials(user.displayName || user.username) : "U"}
+                  </span>
+                )}
               </div>
               <div>
                 <div className="text-sm font-semibold text-[#060607]">
-                  {user ? user.username : "User"}
+                  {user ? (user.displayName || user.username) : "User"}
                 </div>
                 <div className="text-xs text-[#747F8D]">Account</div>
               </div>
@@ -141,85 +183,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="flex-1 overflow-y-auto px-8 py-6">
-            {activeTab === "account" && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-[#060607] mb-2">Thông tin tài khoản</h3>
-                  <div className="bg-[#F7F8F9] rounded-lg p-4 space-y-3">
-                    <div>
-                      <label className="text-xs font-semibold text-[#747F8D] uppercase tracking-wide">
-                        Username
-                      </label>
-                      <p className="text-sm text-[#060607] mt-1">
-                        {user ? user.username : "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-[#747F8D] uppercase tracking-wide">
-                        Email
-                      </label>
-                      <p className="text-sm text-[#060607] mt-1">
-                        {user ? user.email : "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-[#747F8D] uppercase tracking-wide">
-                        User ID
-                      </label>
-                      <p className="text-sm text-[#060607] mt-1 font-mono">
-                        {user ? user.id : "N/A"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {activeTab === "privacy" && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-[#060607] mb-2">Push Notifications</h3>
-                  <div className="bg-[#F7F8F9] rounded-lg p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-[#060607]">Desktop Notifications</p>
-                        <p className="text-xs text-[#747F8D] mt-1">
-                          Nhận thông báo trên máy tính khi có tin nhắn mới
-                        </p>
-                      </div>
-                      {isSupported ? (
-                        <button
-                          onClick={isSubscribed ? unsubscribe : subscribe}
-                          disabled={isLoading}
-                          className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                            isSubscribed
-                              ? "bg-[#F23F42] hover:bg-[#E03E41] text-white"
-                              : "bg-[#5865F2] hover:bg-[#4752C4] text-white"
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          {isLoading
-                            ? "Đang xử lý..."
-                            : isSubscribed
-                            ? "Tắt thông báo"
-                            : "Bật thông báo"}
-                        </button>
-                      ) : (
-                        <p className="text-xs text-[#747F8D]">
-                          Trình duyệt không hỗ trợ
-                        </p>
-                      )}
-                    </div>
-                    {isSubscribed && (
-                      <div className="pt-2 border-t border-[#E3E5E8]">
-                        <p className="text-xs text-[#23A559] flex items-center gap-1">
-                          <span className="w-2 h-2 bg-[#23A559] rounded-full"></span>
-                          Thông báo đã được bật
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+            {activeTab === "account" && <AccountTab user={user} onUserUpdate={handleUserUpdate} />}
+            {activeTab === "privacy" && <PrivacyTab />}
             {activeTab === "connections" && (
               <p className="text-sm text-[#747F8D]">
                 Demo connections settings.
@@ -260,67 +225,3 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
-function SettingsItem({
-  label,
-  active,
-  onClick,
-  danger,
-}: {
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full px-4 py-2 text-left text-sm rounded-r-full transition-colors ${
-        active
-          ? "bg-[#E3E5E8] text-[#060607]"
-          : danger
-          ? "text-red-500 hover:bg-[#E3E5E8] hover:text-red-600"
-          : "text-[#747F8D] hover:bg-[#E3E5E8] hover:text-[#060607]"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function LogoutConfirmModal({ onCancel }: { onCancel: () => void }) {
-  const router = useRouter();
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/");
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="w-[420px] bg-[#FFFFFF] rounded-lg shadow-2xl p-6">
-        <h3 className="text-lg font-semibold text-[#060607] mb-2">Log Out</h3>
-        <p className="text-sm text-[#747F8D] mb-6">
-          Are you sure you want to log out?
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm rounded bg-[#E3E5E8] text-[#060607] hover:bg-[#D1D9DE] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm rounded bg-[#D83C3E] text-white hover:bg-[#F04747] transition-colors"
-          >
-            Log Out
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-

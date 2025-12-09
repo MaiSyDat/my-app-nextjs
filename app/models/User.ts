@@ -15,20 +15,32 @@ export interface IUser extends Document {
   username: string;
   email: string;
   password: string;
+  avatar?: string;
+  displayName?: string;
+  phoneNumber?: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 // Định nghĩa schema cho User
 const UserSchema: Schema<IUser> = new Schema({
-    username: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    username: { type: String, required: true, unique: true, index: true },
+    email: { type: String, required: true, unique: true, index: true },
     password: { type: String, required: true },
+    avatar: { type: String, required: false },
+    displayName: { type: String, required: false },
+    phoneNumber: { type: String, required: false },
 }, {
     timestamps: true,
+    strict: true, // Chỉ lưu các trường được định nghĩa trong schema
 })
 
-// Tránh tạo lại model nếu đã được tạo
-const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
+// Xóa model cũ nếu có để đảm bảo schema mới được áp dụng
+if (mongoose.models.User) {
+  delete mongoose.models.User;
+}
+
+// Tạo model mới với schema đã cập nhật
+const User: Model<IUser> = mongoose.model<IUser>('User', UserSchema);
 
 export default User;

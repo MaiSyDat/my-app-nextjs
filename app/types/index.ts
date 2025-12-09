@@ -15,17 +15,6 @@ export interface Message {
   createdAt?: Date | string;
 }
 
-// User type
-export interface User {
-  id: string;
-  username: string;
-  email: string;
-}
-
-// Friend type
-// Friend interface được định nghĩa trong useFriends hook
-// Import từ app/hooks/useFriends nếu cần sử dụng
-
 // Chat User type
 export interface ChatUser {
   id: string;
@@ -33,18 +22,11 @@ export interface ChatUser {
   avatar: string;
   tag: string;
   email: string;
+  username?: string; // Username của user
+  friendshipStatus?: string; // Thêm friendship status
+  blockedBy?: string | null; // ID của người đã block (nếu bị block)
+  requestedBy?: string | null; // ID của người đã gửi friend request (nếu status là pending)
+  friendshipId?: string; // ID của friendship để accept/reject request
 }
 
-// Pending Request type
-export interface PendingRequest {
-  friendshipId: string;
-  friend: {
-    id: string;
-    username: string;
-    email: string;
-  };
-  status: string;
-  requestedBy: any;
-  createdAt: Date;
-}
 

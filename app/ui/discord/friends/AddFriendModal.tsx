@@ -15,9 +15,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Icon from "../../common/Icon";
 import Avatar from "../../common/Avatar";
+import StatusIndicator from "../../common/StatusIndicator";
 import LoadingSpinner from "../../common/LoadingSpinner";
 import { useToast } from "@/app/ui/toast";
 import { useFriendsContext } from "@/app/contexts/FriendsContext";
+import { useUserStatusContext } from "@/app/contexts/UserStatusContext";
 
 // Props
 interface AddFriendModalProps {
@@ -27,6 +29,8 @@ interface AddFriendModalProps {
 
 // Component modal tìm kiếm và kết bạn
 export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalProps) {
+  const { getUserStatus } = useUserStatusContext();
+  
   // State quản lý search input
   const [searchQuery, setSearchQuery] = useState("");
   // State lưu kết quả tìm kiếm
@@ -34,6 +38,8 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
     id: string;
     username: string;
     email: string;
+    displayName?: string | null;
+    avatar?: string | null;
     friendshipStatus?: string | null;
     requestedBy?: string | null;
   }>>([]);
@@ -101,7 +107,9 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
     };
   }, [searchQuery, currentUserId]);
 
-  // Hàm gửi lời mời kết bạn - sử dụng context
+  /**
+   * Gửi lời mời kết bạn
+   */
   const handleSendFriendRequest = useCallback(async (friendId: string) => {
     if (!currentUserId) return;
 
@@ -110,8 +118,8 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
       const success = await sendFriendRequest(friendId);
       
       if (success) {
-        // Thành công - cập nhật trạng thái thành "pending"
-        showSuccess("Đã gửi lời mời kết bạn!");
+        // Thành công - cập nhật trạng thái thành "pending" trong local state
+        showSuccess("Friend request sent!");
         setSearchResults((prev) =>
           prev.map((user) =>
             user.id === friendId
@@ -121,11 +129,20 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
         );
         onSuccess?.();
       } else {
-        // Lỗi đã được xử lý trong context, chỉ cần hiển thị thông báo chung
-        showError("Không thể gửi lời mời kết bạn");
+        showError("Unable to send friend request");
       }
-    } catch (error) {
-      showError("Có lỗi xảy ra khi gửi lời mời");
+    } catch (error: any) {
+      // Nếu lỗi là "already sent", cập nhật local state
+      if (error.message?.includes("already sent")) {
+        setSearchResults((prev) =>
+          prev.map((user) =>
+            user.id === friendId
+              ? { ...user, friendshipStatus: "pending", requestedBy: currentUserId }
+              : user
+          )
+        );
+      }
+      showError(error.message || "An error occurred while sending friend request");
     } finally {
       setSendingRequest(null);
     }
@@ -137,7 +154,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#E3E5E8] bg-[#F7F8F9]">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-[#060607]">Thêm Bạn Bè</h2>
+            <h2 className="text-xl font-semibold text-[#060607]">Add Friend</h2>
             <button
               onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]"
@@ -146,7 +163,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
             </button>
           </div>
           <p className="text-sm text-[#747F8D] mt-1">
-            Bạn có thể gửi lời mời kết bạn bằng username hoặc email.
+            You can send a friend request using username or email.
           </p>
         </div>
 
@@ -158,7 +175,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
             </div>
             <input
               type="text"
-              placeholder="Nhập username hoặc email để tìm kiếm"
+              placeholder="Enter username or email to search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-[#F7F8F9] border border-[#E3E5E8] rounded-lg text-sm text-[#060607] placeholder-[#747F8D] focus:outline-none focus:ring-2 focus:ring-[#5865F2]/20 focus:border-[#5865F2] transition-all"
@@ -173,7 +190,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
                 {isSearching ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="w-6 h-6 border-2 border-[#5865F2] border-t-transparent rounded-full animate-spin"></div>
-                    <span className="ml-3 text-sm text-[#747F8D]">Đang tìm kiếm...</span>
+                    <span className="ml-3 text-sm text-[#747F8D]">Searching...</span>
                   </div>
                 ) : searchResults.length > 0 ? (
                   <div className="space-y-2">
@@ -190,15 +207,21 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
                           className="flex items-center justify-between p-3 rounded-lg hover:bg-[#F7F8F9] transition-colors"
                         >
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            {/* Avatar */}
-                            <Avatar
-                              initial={user.username.charAt(0)}
-                              size="lg"
-                            />
+                            {/* Avatar với status indicator */}
+                            <div className="relative shrink-0">
+                              <Avatar
+                                initial={(user.displayName || user.username).charAt(0).toUpperCase()}
+                                avatarUrl={user.avatar || undefined}
+                                size="lg"
+                              />
+                              <div className="absolute -bottom-0.5 -right-0.5">
+                                <StatusIndicator status={getUserStatus(user.id)} size="lg" />
+                              </div>
+                            </div>
                             {/* Thông tin user */}
                             <div className="flex-1 min-w-0">
                               <div className="font-semibold text-[#060607] text-sm truncate">
-                                {user.username}
+                                {user.displayName || user.username}
                               </div>
                               <div className="text-xs text-[#747F8D] truncate">
                                 {user.email}
@@ -208,19 +231,19 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
                           {/* Hiển thị trạng thái hoặc nút gửi lời mời */}
                           {isFriend ? (
                             <span className="px-4 py-1.5 text-sm font-medium text-[#747F8D] bg-[#F7F8F9] rounded-lg shrink-0">
-                              Bạn bè
+                              Friends
                             </span>
                           ) : isRequestedByMe ? (
                             <span className="px-4 py-1.5 text-sm font-medium text-[#747F8D] bg-[#F7F8F9] rounded-lg shrink-0">
-                              Đã gửi lời mời
+                              Friend Request Sent
                             </span>
                           ) : (
                             <button
                               onClick={() => handleSendFriendRequest(user.id)}
                               disabled={sendingRequest === user.id || isRequestedByThem}
-                              className="px-4 py-1.5 text-sm font-semibold text-white bg-linear-to-r from-[#5865F2] to-[#4752C4] hover:from-[#4752C4] hover:to-[#3C45A5] rounded-lg transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                              className="px-4 py-1.5 text-sm font-semibold text-white bg-[#5865F2] hover:bg-[#4752C4] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                             >
-                              {sendingRequest === user.id ? "Đang gửi..." : "Gửi lời mời"}
+                              {sendingRequest === user.id ? "Sending..." : "Send Request"}
                             </button>
                           )}
                         </div>
@@ -229,7 +252,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
                   </div>
                 ) : (
                   <div className="text-center py-8">
-                    <p className="text-sm text-[#747F8D]">Không tìm thấy người dùng nào.</p>
+                    <p className="text-sm text-[#747F8D]">No users found.</p>
                   </div>
                 )}
               </>
@@ -243,7 +266,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
                   />
                 </div>
                 <p className="text-sm text-[#747F8D]">
-                  Nhập username hoặc email để tìm kiếm bạn bè
+                  Enter username or email to search for friends
                 </p>
               </div>
             )}
@@ -256,7 +279,7 @@ export default function AddFriendModal({ onClose, onSuccess }: AddFriendModalPro
             onClick={onClose}
             className="w-full px-4 py-2 text-sm font-medium text-[#060607] bg-[#E3E5E8] hover:bg-[#D1D9DE] rounded-lg transition-colors"
           >
-            Đóng
+            Close
           </button>
         </div>
       </div>

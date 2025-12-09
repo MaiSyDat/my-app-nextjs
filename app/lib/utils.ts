@@ -10,3 +10,9 @@ export { getUserFromStorage, getUserIdFromStorage } from './storage/storageUtils
 
 // Re-export socket utilities
 export { getSocketUrl } from './socket/socketUtils';
+
+// Re-export user utilities
+export { formatAvatarUrl, getDisplayName, getInitials } from './utils/userUtils';
+
+// Re-export message utilities
+export { formatMessage, markMessagesAsRead } from './utils/messageUtils';

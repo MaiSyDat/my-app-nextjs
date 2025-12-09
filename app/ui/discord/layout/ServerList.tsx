@@ -28,14 +28,17 @@ const ServerList = memo(function ServerList() {
     { id: "5", icon: "D", name: "Server 5" },
   ], []);
 
+  // Xử lý click vào server: set selectedServer để hiển thị active indicator
   const handleServerClick = useCallback((serverId: string) => {
     setSelectedServer(serverId);
   }, []);
 
+  // Xử lý hover: set hoveredServer để hiển thị hover indicator
   const handleMouseEnter = useCallback((serverId: string) => {
     setHoveredServer(serverId);
   }, []);
 
+  // Xử lý mouse leave: reset hoveredServer
   const handleMouseLeave = useCallback(() => {
     setHoveredServer(null);
   }, []);
@@ -51,7 +54,7 @@ const ServerList = memo(function ServerList() {
       </button>
 
       {/* Divider */}
-      <div className="w-8 h-[2px] bg-[#E3E5E8] rounded-full mb-1"></div>
+      <div className="w-8 h-0.5 bg-[#E3E5E8] rounded-full mb-1"></div>
 
       {/* Server icons */}
       {servers.slice(1).map((server) => (

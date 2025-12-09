@@ -25,10 +25,10 @@ const TopBar = memo(function TopBar({ title, onToggleChannelSidebar, onToggleRig
   const displayTitle = useMemo(() => {
     // Check if it's a user chat
     if (title.startsWith("user-")) {
-      return "Tin nhắn trực tiếp";
+      return "Direct Messages";
     }
     const titleMap: { [key: string]: string } = {
-      friends: "Bạn bè",
+      friends: "Friends",
       nitro: "Nitro",
       shop: "Shop",
     };
@@ -67,7 +67,7 @@ const TopBar = memo(function TopBar({ title, onToggleChannelSidebar, onToggleRig
         {/* Inbox button - ẩn trên mobile */}
         <button
           className="hidden md:flex w-8 h-8 items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]"
-          aria-label="Hộp thư đến"
+          aria-label="Inbox"
           role="button"
           tabIndex={0}
         >
@@ -80,7 +80,7 @@ const TopBar = memo(function TopBar({ title, onToggleChannelSidebar, onToggleRig
           rel="noreferrer noopener"
           target="_blank"
           className="hidden md:flex w-8 h-8 items-center justify-center rounded hover:bg-[#E3E5E8] transition-colors text-[#747F8D] hover:text-[#060607]"
-          aria-label="Trợ giúp"
+          aria-label="Help"
           tabIndex={0}
         >
           <Icon src="help.svg" className="w-6 h-6" size={24} />

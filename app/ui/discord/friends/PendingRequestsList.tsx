@@ -20,6 +20,8 @@ interface PendingRequest {
     id: string;
     username: string;
     email: string;
+    displayName?: string | null;
+    avatar?: string | null;
   };
   status: string;
   requestedBy: any;
@@ -58,10 +60,10 @@ const PendingRequestsList = memo(function PendingRequestsList({ requests, loadin
             </div>
           </div>
           <h3 className="text-2xl font-bold text-[#060607] mb-3">
-            Không có lời mời kết bạn nào.
+            No friend requests.
           </h3>
           <p className="text-[#747F8D] text-sm leading-relaxed">
-            Bạn không có lời mời kết bạn nào đang chờ xử lý.
+            You don't have any pending friend requests.
           </p>
         </div>
       </div>
@@ -71,7 +73,7 @@ const PendingRequestsList = memo(function PendingRequestsList({ requests, loadin
   return (
     <div className="p-4 space-y-3">
       <h3 className="text-xs font-bold text-[#747F8D] uppercase tracking-wider px-2 mb-2">
-        Lời mời kết bạn — {requests.length}
+        Friend Requests — {requests.length}
       </h3>
       {requests.map((request) => (
         <div
@@ -80,7 +82,8 @@ const PendingRequestsList = memo(function PendingRequestsList({ requests, loadin
         >
           {/* Avatar */}
           <Avatar
-            initial={request.friend.username.charAt(0)}
+            initial={(request.friend.displayName || request.friend.username).charAt(0).toUpperCase()}
+            avatarUrl={request.friend.avatar || undefined}
             size="xl"
           />
           
@@ -88,7 +91,7 @@ const PendingRequestsList = memo(function PendingRequestsList({ requests, loadin
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h4 className="text-base font-semibold text-[#060607] truncate">
-                {request.friend.username}
+                {request.friend.displayName || request.friend.username}
               </h4>
             </div>
             <p className="text-sm text-[#747F8D] truncate">
@@ -100,15 +103,15 @@ const PendingRequestsList = memo(function PendingRequestsList({ requests, loadin
           <div className="flex gap-2 shrink-0">
             <button
               onClick={() => onAccept(request.friendshipId)}
-              className="px-4 py-1.5 text-sm font-semibold text-white bg-linear-to-r from-[#23A559] to-[#1E8E4A] hover:from-[#1E8E4A] hover:to-[#1A7A3F] rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
+              className="px-4 py-1.5 text-sm font-semibold text-white bg-[#23A559] hover:bg-[#1E8E4A] rounded-lg transition-colors"
             >
-              Chấp nhận
+              Accept
             </button>
             <button
               onClick={() => onReject(request.friendshipId)}
               className="px-4 py-1.5 text-sm font-semibold text-[#060607] bg-[#E3E5E8] hover:bg-[#D1D9DE] rounded-lg transition-all duration-200 shadow-md"
             >
-              Từ chối
+              Decline
             </button>
           </div>
         </div>
